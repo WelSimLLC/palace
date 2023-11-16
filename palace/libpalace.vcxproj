@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="drivers\basesolver.hpp" />
+    <ClInclude Include="drivers\drivensolver.hpp" />
+    <ClInclude Include="drivers\eigensolver.hpp" />
+    <ClInclude Include="drivers\electrostaticsolver.hpp" />
+    <ClInclude Include="drivers\magnetostaticsolver.hpp" />
+    <ClInclude Include="drivers\transientsolver.hpp" />
+    <ClInclude Include="fem\bilinearform.hpp" />
+    <ClInclude Include="fem\coefficient.hpp" />
+    <ClInclude Include="fem\errorindicator.hpp" />
+    <ClInclude Include="fem\fespace.hpp" />
+    <ClInclude Include="fem\integrator.hpp" />
+    <ClInclude Include="fem\interpolator.hpp" />
+    <ClInclude Include="fem\libceed\hash.hpp" />
+    <ClInclude Include="fem\libceed\integrator.hpp" />
+    <ClInclude Include="fem\libceed\libceed_operator.hpp" />
+    <ClInclude Include="fem\libceed\restriction.hpp" />
+    <ClInclude Include="fem\libceed\utils.hpp" />
+    <ClInclude Include="fem\lumpedelement.hpp" />
+    <ClInclude Include="fem\multigrid.hpp" />
+    <ClInclude Include="fem\qfunctions\curlcurlmass_qf.h" />
+    <ClInclude Include="fem\qfunctions\curlcurl_qf.h" />
+    <ClInclude Include="fem\qfunctions\diffusionmass_qf.h" />
+    <ClInclude Include="fem\qfunctions\diffusion_qf.h" />
+    <ClInclude Include="fem\qfunctions\divdivmass_qf.h" />
+    <ClInclude Include="fem\qfunctions\divdiv_qf.h" />
+    <ClInclude Include="fem\qfunctions\grad_qf.h" />
+    <ClInclude Include="fem\qfunctions\hcurlhdiv_qf.h" />
+    <ClInclude Include="fem\qfunctions\hcurl_qf.h" />
+    <ClInclude Include="fem\qfunctions\hdiv_qf.h" />
+    <ClInclude Include="fem\qfunctions\mass_qf.h" />
+    <ClInclude Include="fem\qfunctions\utils_qf.h" />
+    <ClInclude Include="fem\qfunctions\vecfemass_qf.h" />
+    <ClInclude Include="linalg\amg.hpp" />
+    <ClInclude Include="linalg\ams.hpp" />
+    <ClInclude Include="linalg\chebyshev.hpp" />
+    <ClInclude Include="linalg\distrelaxation.hpp" />
+    <ClInclude Include="linalg\divfree.hpp" />
+    <ClInclude Include="linalg\eps.hpp" />
+    <ClInclude Include="linalg\errorestimator.hpp" />
+    <ClInclude Include="linalg\gmg.hpp" />
+    <ClInclude Include="linalg\hcurl.hpp" />
+    <ClInclude Include="linalg\iterative.hpp" />
+    <ClInclude Include="linalg\jacobi.hpp" />
+    <ClInclude Include="linalg\ksp.hpp" />
+    <ClInclude Include="linalg\mumps.hpp" />
+    <ClInclude Include="linalg\operator.hpp" />
+    <ClInclude Include="linalg\orthog.hpp" />
+    <ClInclude Include="linalg\petsc.hpp" />
+    <ClInclude Include="linalg\rap.hpp" />
+    <ClInclude Include="linalg\slepc.hpp" />
+    <ClInclude Include="linalg\solver.hpp" />
+    <ClInclude Include="linalg\strumpack.hpp" />
+    <ClInclude Include="linalg\superlu.hpp" />
+    <ClInclude Include="linalg\vector.hpp" />
+    <ClInclude Include="models\curlcurloperator.hpp" />
+    <ClInclude Include="models\domainpostoperator.hpp" />
+    <ClInclude Include="models\farfieldboundaryoperator.hpp" />
+    <ClInclude Include="models\laplaceoperator.hpp" />
+    <ClInclude Include="models\lumpedportoperator.hpp" />
+    <ClInclude Include="models\materialoperator.hpp" />
+    <ClInclude Include="models\postoperator.hpp" />
+    <ClInclude Include="models\romoperator.hpp" />
+    <ClInclude Include="models\spaceoperator.hpp" />
+    <ClInclude Include="models\surfaceconductivityoperator.hpp" />
+    <ClInclude Include="models\surfacecurrentoperator.hpp" />
+    <ClInclude Include="models\surfaceimpedanceoperator.hpp" />
+    <ClInclude Include="models\surfacepostoperator.hpp" />
+    <ClInclude Include="models\timeoperator.hpp" />
+    <ClInclude Include="models\waveportoperator.hpp" />
+    <ClInclude Include="utils\communication.hpp" />
+    <ClInclude Include="utils\configfile.hpp" />
+    <ClInclude Include="utils\constants.hpp" />
+    <ClInclude Include="utils\excitations.hpp" />
+    <ClInclude Include="utils\filesystem.hpp" />
+    <ClInclude Include="utils\geodata.hpp" />
+    <ClInclude Include="utils\iodata.hpp" />
+    <ClInclude Include="utils\meshio.hpp" />
+    <ClInclude Include="utils\omp.hpp" />
+    <ClInclude Include="utils\prettyprint.hpp" />
+    <ClInclude Include="utils\timer.hpp" />
+    <ClInclude Include="utils\zlib.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="drivers\basesolver.cpp" />
+    <ClCompile Include="drivers\drivensolver.cpp" />
+    <ClCompile Include="drivers\eigensolver.cpp" />
+    <ClCompile Include="drivers\electrostaticsolver.cpp" />
+    <ClCompile Include="drivers\magnetostaticsolver.cpp" />
+    <ClCompile Include="drivers\transientsolver.cpp" />
+    <ClCompile Include="fem\bilinearform.cpp" />
+    <ClCompile Include="fem\coefficient.cpp" />
+    <ClCompile Include="fem\errorindicator.cpp" />
+    <ClCompile Include="fem\fespace.cpp" />
+    <ClCompile Include="fem\integrator.cpp" />
+    <ClCompile Include="fem\interpolator.cpp" />
+    <ClCompile Include="fem\libceed\libceed_operator.cpp" />
+    <ClCompile Include="fem\lumpedelement.cpp" />
+    <ClCompile Include="fem\integ\curlcurl.cpp" />
+    <ClCompile Include="fem\integ\curlcurlmass.cpp" />
+    <ClCompile Include="fem\integ\diffusion.cpp" />
+    <ClCompile Include="fem\integ\diffusionmass.cpp" />
+    <ClCompile Include="fem\integ\divdiv.cpp" />
+    <ClCompile Include="fem\integ\divdivmass.cpp" />
+    <ClCompile Include="fem\integ\grad.cpp" />
+    <ClCompile Include="fem\integ\mass.cpp" />
+    <ClCompile Include="fem\integ\mixedveccurl.cpp" />
+    <ClCompile Include="fem\integ\mixedvecgrad.cpp" />
+    <ClCompile Include="fem\integ\vecfemass.cpp" />
+    <ClCompile Include="fem\libceed\basis.cpp" />
+    <ClCompile Include="fem\libceed\restriction.cpp" />
+    <ClCompile Include="fem\libceed\utils.cpp" />
+    <ClCompile Include="linalg\amg.cpp" />
+    <ClCompile Include="linalg\ams.cpp" />
+    <ClCompile Include="linalg\arpack.cpp" />
+    <ClCompile Include="linalg\chebyshev.cpp" />
+    <ClCompile Include="linalg\distrelaxation.cpp" />
+    <ClCompile Include="linalg\divfree.cpp" />
+    <ClCompile Include="linalg\errorestimator.cpp" />
+    <ClCompile Include="linalg\gmg.cpp" />
+    <ClCompile Include="linalg\hcurl.cpp" />
+    <ClCompile Include="linalg\jacobi.cpp" />
+    <ClCompile Include="linalg\ksp.cpp" />
+    <ClCompile Include="linalg\iterative.cpp" />
+    <ClCompile Include="linalg\mumps.cpp" />
+    <ClCompile Include="linalg\operator.cpp">
+      <ObjectFileName>$(IntDir)/linalg/operator.cpp.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="linalg\rap.cpp" />
+    <ClCompile Include="linalg\slepc.cpp" />
+    <ClCompile Include="linalg\solver.cpp" />
+    <ClCompile Include="linalg\strumpack.cpp" />
+    <ClCompile Include="linalg\superlu.cpp" />
+    <ClCompile Include="linalg\vector.cpp" />
+    <ClCompile Include="models\curlcurloperator.cpp" />
+    <ClCompile Include="models\domainpostoperator.cpp" />
+    <ClCompile Include="models\farfieldboundaryoperator.cpp" />
+    <ClCompile Include="models\laplaceoperator.cpp" />
+    <ClCompile Include="models\lumpedportoperator.cpp" />
+    <ClCompile Include="models\materialoperator.cpp" />
+    <ClCompile Include="models\postoperator.cpp" />
+    <ClCompile Include="models\romoperator.cpp" />
+    <ClCompile Include="models\spaceoperator.cpp" />
+    <ClCompile Include="models\surfaceconductivityoperator.cpp" />
+    <ClCompile Include="models\surfacecurrentoperator.cpp" />
+    <ClCompile Include="models\surfaceimpedanceoperator.cpp" />
+    <ClCompile Include="models\surfacepostoperator.cpp" />
+    <ClCompile Include="models\timeoperator.cpp" />
+    <ClCompile Include="models\waveportoperator.cpp" />
+    <ClCompile Include="utils\configfile.cpp" />
+    <ClCompile Include="utils\geodata.cpp" />
+    <ClCompile Include="utils\iodata.cpp" />
+    <ClCompile Include="utils\meshio.cpp" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{ce376632-1b14-426e-9d58-df59700836c9}</ProjectGuid>
+    <RootNamespace>libpalace</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="libpalace_d.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="libpalace.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(Platform)\$(Configuration)\</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(Platform)\$(Configuration)\</OutDir>
+    <TargetName>$(ProjectName)_d</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.7.34018.315
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "palace", "palace.vcxproj", "{E2B30E7E-9BC6-47E1-A5CD-83B6F501EAC6}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libpalace", "libpalace.vcxproj", "{CE376632-1B14-426E-9D58-DF59700836C9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E2B30E7E-9BC6-47E1-A5CD-83B6F501EAC6}.Debug|x64.ActiveCfg = Debug|x64
+		{E2B30E7E-9BC6-47E1-A5CD-83B6F501EAC6}.Debug|x64.Build.0 = Debug|x64
+		{E2B30E7E-9BC6-47E1-A5CD-83B6F501EAC6}.Debug|x86.ActiveCfg = Debug|x64
+		{E2B30E7E-9BC6-47E1-A5CD-83B6F501EAC6}.Release|x64.ActiveCfg = Release|x64
+		{E2B30E7E-9BC6-47E1-A5CD-83B6F501EAC6}.Release|x64.Build.0 = Release|x64
+		{E2B30E7E-9BC6-47E1-A5CD-83B6F501EAC6}.Release|x86.ActiveCfg = Release|x64
+		{CE376632-1B14-426E-9D58-DF59700836C9}.Debug|x64.ActiveCfg = Debug|x64
+		{CE376632-1B14-426E-9D58-DF59700836C9}.Debug|x64.Build.0 = Debug|x64
+		{CE376632-1B14-426E-9D58-DF59700836C9}.Debug|x86.ActiveCfg = Debug|x64
+		{CE376632-1B14-426E-9D58-DF59700836C9}.Release|x64.ActiveCfg = Release|x64
+		{CE376632-1B14-426E-9D58-DF59700836C9}.Release|x64.Build.0 = Release|x64
+		{CE376632-1B14-426E-9D58-DF59700836C9}.Release|x86.ActiveCfg = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0FFA0840-D029-3752-A1CB-5699E0B6EA23}
+	EndGlobalSection
+EndGlobal
