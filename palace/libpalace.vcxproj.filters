@@ -244,10 +244,10 @@
     <ClInclude Include="utils\zlib.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="fem\libceed\libceed_operator.hpp">
+    <ClInclude Include="linalg\slepc.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="linalg\slepc.hpp">
+    <ClInclude Include="fem\libceed\operator.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -447,10 +447,10 @@
     <ClCompile Include="linalg\arpack.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="fem\libceed\libceed_operator.cpp">
+    <ClCompile Include="linalg\slepc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="linalg\slepc.cpp">
+    <ClCompile Include="fem\libceed\operator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

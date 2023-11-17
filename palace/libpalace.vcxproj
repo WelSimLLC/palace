@@ -25,7 +25,7 @@
     <ClInclude Include="fem\interpolator.hpp" />
     <ClInclude Include="fem\libceed\hash.hpp" />
     <ClInclude Include="fem\libceed\integrator.hpp" />
-    <ClInclude Include="fem\libceed\libceed_operator.hpp" />
+    <ClInclude Include="fem\libceed\operator.hpp" />
     <ClInclude Include="fem\libceed\restriction.hpp" />
     <ClInclude Include="fem\libceed\utils.hpp" />
     <ClInclude Include="fem\lumpedelement.hpp" />
@@ -106,7 +106,7 @@
     <ClCompile Include="fem\fespace.cpp" />
     <ClCompile Include="fem\integrator.cpp" />
     <ClCompile Include="fem\interpolator.cpp" />
-    <ClCompile Include="fem\libceed\libceed_operator.cpp" />
+    <ClCompile Include="fem\libceed\operator.cpp" />
     <ClCompile Include="fem\lumpedelement.cpp" />
     <ClCompile Include="fem\integ\curlcurl.cpp" />
     <ClCompile Include="fem\integ\curlcurlmass.cpp" />
