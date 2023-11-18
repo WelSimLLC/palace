@@ -250,6 +250,9 @@
     <ClInclude Include="fem\libceed\operator.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="utils\dorfler.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="drivers\basesolver.cpp">
@@ -451,6 +454,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="fem\libceed\operator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\dorfler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
