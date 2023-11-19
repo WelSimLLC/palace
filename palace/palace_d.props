@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(Platform)\$(Configuration)\</OutDir>
+    <TargetName>$(ProjectName)_d</TargetName>
+    <IncludePath>$(IncludePath)</IncludePath>
+    <LibraryPath>$(WELSIM_LIBPACK)\lib;$(WELSIM_LIBPACK)\lib\palace;$(MSMPI_LIB64);$(IFORT_COMPILER22)\compiler\lib\intel64_win;$(WELSIM_LIBPACK)\lib\mumps;$(LibraryPath)</LibraryPath>
+    <ExternalIncludePath>$(MSMPI_INC);$(INTEL_MKL)\include;$(WELSIM_LIBPACK)\include\palace\mfem;$(WELSIM_LIBPACK)\include\palace\libCEED;$(WELSIM_LIBPACK)\include\hypre;$(WELSIM_LIBPACK)\include\zlib;$(WELSIM_LIBPACK)\include\mumps;$(WELSIM_LIBPACK)\include\eigen3;$(WELSIM_LIBPACK)\include\petsc;$(WELSIM_LIBPACK)\include\fmt;$(WELSIM_LIBPACK)\include;.\;D:\WelSimLLC-github\palace\palace;$(VC_IncludePath);$(WindowsSDK_IncludePath);</ExternalIncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <PostBuildEvent>
+      <Command>postbuild_palace_d</Command>
+    </PostBuildEvent>
+    <ClCompile>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;CEED_SKIP_VISIBILITY;PALACE_WITH_ARPACK;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>mfem-palace_d.lib;arpack_d.lib;parpack_d.lib;libCEED-palace_d.lib;libpalace_d.lib;mfem-common-palace_d.lib;msmpi.lib;ifmodintr.lib;hypre\HYPRE_d.lib;fmt\fmtd.lib;metis\metis_d.lib;PETSc\Debug\libpetsc.lib;Debug\dmumps_d.lib;Debug\dmumps_c_d.lib;Debug\mumps_common_c_d.lib;Debug\mumps_common_d.lib;Debug\pord.lib;libxsmm\xsmm_d.lib;zlib\zlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup />
+</Project>
