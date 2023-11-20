@@ -83,6 +83,7 @@
     <ClInclude Include="utils\communication.hpp" />
     <ClInclude Include="utils\configfile.hpp" />
     <ClInclude Include="utils\constants.hpp" />
+    <ClInclude Include="utils\diagnostic.hpp" />
     <ClInclude Include="utils\dorfler.hpp" />
     <ClInclude Include="utils\excitations.hpp" />
     <ClInclude Include="utils\filesystem.hpp" />
