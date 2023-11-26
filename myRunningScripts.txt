@@ -1,0 +1,21 @@
+palace_d _palace_examples/spheres/spheres.json
+
+
+
+palace _palace_examples/cavity/cavity_impedance.json
+palace _palace_examples/cavity/cavity_pec.json
+
+palace _palace_examples/coaxial/coaxial_matched.json
+palace _palace_examples/coaxial/coaxial_open.json
+palace _palace_examples/coaxial/coaxial_short.json
+
+palace _palace_examples/cpw/cpw_lumped_adaptive.json, 216s for OpenMP
+palace _palace_examples/cpw/cpw_lumped_uniform.json, 170s for OpenMP
+palace _palace_examples/cpw/cpw_wave_adaptive.json
+palace _palace_examples/cpw/cpw_wave_uniform.json
+
+palace _palace_examples/rings/rings.json, 36s for OpenMP
+
+palace _palace_examples/spheres/spheres.json, 20s for OpenMP
+
+
