@@ -5,8 +5,8 @@
   <PropertyGroup>
     <OutDir>$(Platform)\$(Configuration)\</OutDir>
     <IncludePath>$(IncludePath)</IncludePath>
-    <LibraryPath>$(WELSIM_LIBPACK)\lib\palace;$(WELSIM_LIBPACK)\lib;$(IFORT_COMPILER22)\compiler\lib\intel64_win;$(MSMPI_LIB64);$(MKLROOT)\lib\intel64;$(WELSIM_LIBPACK)\lib\mumps;$(LibraryPath)</LibraryPath>
-    <ExternalIncludePath>$(WELSIM_LIBPACK)\include\palace\mfem;$(WELSIM_LIBPACK)\include\palace\libCEED;$(WELSIM_LIBPACK)\include\fmt;$(WELSIM_LIBPACK)\include\hypre;$(WELSIM_LIBPACK)\include\zlib;$(WELSIM_LIBPACK)\include\mumps;$(WELSIM_LIBPACK)\include\petsc;$(WELSIM_LIBPACK)\include\eigen3;.\;D:\WelSimLLC-github\palace\palace;$(WELSIM_LIBPACK)\include;$(MSMPI_INC);$(INTEL_MKL)\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <LibraryPath>$(WELSIM_LIBPACK)\lib\mumps;$(WELSIM_LIBPACK)\lib;$(IFORT_COMPILER22)\compiler\lib\intel64_win;$(MSMPI_LIB64);$(MKLROOT)\lib\intel64;$(LibraryPath)</LibraryPath>
+    <ExternalIncludePath>$(MSMPI_INC);$(INTEL_MKL)\include;$(WELSIM_LIBPACK)\include\palace\mfem;$(WELSIM_LIBPACK)\include\palace\libCEED;$(WELSIM_LIBPACK)\include\fmt;$(WELSIM_LIBPACK)\include\hypre;$(WELSIM_LIBPACK)\include\zlib;$(WELSIM_LIBPACK)\include\mumps;$(WELSIM_LIBPACK)\include\petsc;$(WELSIM_LIBPACK)\include\eigen3;$(WELSIM_LIBPACK)\include;.\;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <PostBuildEvent>
@@ -16,7 +16,7 @@
       <PreprocessorDefinitions>_UNICODE;UNICODE;CEED_SKIP_VISIBILITY;PALACE_WITH_ARPACK;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>mfem-palace.lib;arpack.lib;parpack.lib;libCEED-palace.lib;libpalace.lib;mfem-common-palace.lib;msmpi.lib;ifmodintr.lib;hypre\HYPRE.lib;fmt\fmt.lib;metis\metis.lib;PETSc\libpetsc.lib;msmpifec.lib;mkl_core_dll.lib;mkl_intel_lp64_dll.lib;mkl_sequential_dll.lib;mkl_scalapack_lp64_dll.lib;mkl_intel_thread_dll.lib;mkl_blacs_lp64_dll.lib;Release\dmumps.lib;Release\dmumps_c.lib;Release\mumps_common_c.lib;Release\mumps_common.lib;Release\pord.lib;libxsmm\xsmm.lib;zlib\zlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>palace\gslib-palace.lib;palace\mfem-palace.lib;palace\mfem-common-palace.lib;palace\libCEED-palace.lib;palace\arpack.lib;palace\parpack.lib;palace\libpalace.lib;msmpi.lib;msmpifec.lib;hypre\HYPRE.lib;fmt\fmt.lib;metis\metis.lib;PETSc\Release\libpetsc.lib;mkl_core_dll.lib;mkl_intel_lp64_dll.lib;mkl_sequential_dll.lib;mkl_scalapack_lp64_dll.lib;mkl_intel_thread_dll.lib;mkl_blacs_lp64_dll.lib;Release\dmumps.lib;Release\dmumps_c.lib;Release\mumps_common_c.lib;Release\mumps_common.lib;Release\pord.lib;libxsmm\xsmm.lib;zlib\zlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup />

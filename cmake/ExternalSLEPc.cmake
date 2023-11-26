@@ -72,6 +72,26 @@ if(NOT "${BLAS_LAPACK_LIBRARIES}" STREQUAL "")
   )
 endif()
 
+# Configure GPU support
+if(PALACE_WITH_CUDA)
+  list(APPEND PETSC_OPTIONS "--with-cuda")
+  if(NOT "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "")
+    list(GET CMAKE_CUDA_ARCHITECTURES 0 PETSC_CUDA_ARCH)
+    list(APPEND PETSC_OPTIONS
+      "--with-cuda-arch=${PETSC_CUDA_ARCH}"
+    )
+  endif()
+endif()
+if(PALACE_WITH_HIP)
+  list(APPEND PETSC_OPTIONS "--with-hip")
+  if(NOT "${CMAKE_HIP_ARCHITECTURES}" STREQUAL "")
+    list(GET CMAKE_HIP_ARCHITECTURES 0 PETSC_HIP_ARCH)
+    list(APPEND PETSC_OPTIONS
+      "--with-hip-arch=${PETSC_HIP_ARCH}"
+    )
+  endif()
+endif()
+
 string(REPLACE ";" "; " PETSC_OPTIONS_PRINT "${PETSC_OPTIONS}")
 message(STATUS "PETSC_OPTIONS: ${PETSC_OPTIONS_PRINT}")
 

@@ -12,6 +12,7 @@
 #include <numeric>
 #include <Eigen/Dense>
 #include "utils/communication.hpp"
+#include "utils/diagnostic.hpp"
 #include "utils/filesystem.hpp"
 #include "utils/iodata.hpp"
 #include "utils/meshio.hpp"
@@ -228,17 +229,10 @@ void RefineMesh(const IoData &iodata, std::vector<std::unique_ptr<mfem::ParMesh>
   // refinement.
   if (iodata.model.reorient_tet && mesh.capacity() > 1)
   {
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 4996)
+    PalacePragmaDiagnosticPush 
+    PalacePragmaDiagnosticDisableDeprecated
     mesh[0]->ReorientTetMesh();
-#pragma warning(pop)
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    mesh[0]->ReorientTetMesh();
-#pragma GCC diagnostic pop
-#endif
+    PalacePragmaDiagnosticPop
   }
 
   // Uniformly refine the mesh further in parallel, saving the level meshes for geometric
@@ -379,17 +373,10 @@ void RefineMesh(const IoData &iodata, std::vector<std::unique_ptr<mfem::ParMesh>
   // h-refinement geometric multigrid).
   if (iodata.model.reorient_tet && mesh.size() == 1)
   {
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 4996)
+    PalacePragmaDiagnosticPush 
+    PalacePragmaDiagnosticDisableDeprecated
     mesh[0]->ReorientTetMesh();
-#pragma warning(pop)
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    mesh[0]->ReorientTetMesh();
-#pragma GCC diagnostic pop
-#endif
+    PalacePragmaDiagnosticPop
   }
 
   // Print some mesh information.
