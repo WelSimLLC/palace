@@ -7,6 +7,16 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "palace", "palace.vcxproj", 
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libpalace", "libpalace.vcxproj", "{CE376632-1B14-426E-9D58-DF59700836C9}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libCEED-palace", "..\..\libCEED-palace\libCEED-palace.vcxproj", "{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mfem-palace", "..\..\mfem-palace\mfem-palace.vcxproj", "{78EF8ACD-F0EF-4312-A016-6AA5F695B476}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mfem-common-palace", "..\..\mfem-palace\mfem-common-palace.vcxproj", "{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "deps", "deps", "{FF794BCA-0652-481F-B0D5-A7C9A04749CA}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gslib-palace", "..\..\gslib-palace\gslib-palace.vcxproj", "{327F82B8-6770-403C-B56E-6FCF881FD072}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -27,9 +37,47 @@ Global
 		{CE376632-1B14-426E-9D58-DF59700836C9}.Release|x64.ActiveCfg = Release|x64
 		{CE376632-1B14-426E-9D58-DF59700836C9}.Release|x64.Build.0 = Release|x64
 		{CE376632-1B14-426E-9D58-DF59700836C9}.Release|x86.ActiveCfg = Release|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Debug|x64.ActiveCfg = Debug|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Debug|x64.Build.0 = Debug|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Debug|x86.ActiveCfg = Debug|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Debug|x86.Build.0 = Debug|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Release|x64.ActiveCfg = Release|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Release|x64.Build.0 = Release|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Release|x86.ActiveCfg = Release|x64
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35}.Release|x86.Build.0 = Release|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Debug|x64.ActiveCfg = Debug|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Debug|x64.Build.0 = Debug|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Debug|x86.ActiveCfg = Debug|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Debug|x86.Build.0 = Debug|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Release|x64.ActiveCfg = Release|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Release|x64.Build.0 = Release|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Release|x86.ActiveCfg = Release|x64
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476}.Release|x86.Build.0 = Release|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Debug|x64.ActiveCfg = Debug|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Debug|x64.Build.0 = Debug|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Debug|x86.ActiveCfg = Debug|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Debug|x86.Build.0 = Debug|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Release|x64.ActiveCfg = Release|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Release|x64.Build.0 = Release|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Release|x86.ActiveCfg = Release|x64
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B}.Release|x86.Build.0 = Release|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Debug|x64.ActiveCfg = Debug|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Debug|x64.Build.0 = Debug|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Debug|x86.ActiveCfg = Debug|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Debug|x86.Build.0 = Debug|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Release|x64.ActiveCfg = Release|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Release|x64.Build.0 = Release|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Release|x86.ActiveCfg = Release|x64
+		{327F82B8-6770-403C-B56E-6FCF881FD072}.Release|x86.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E5F526CC-20F7-4ACA-BC02-FD8EDBF4FC35} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
+		{78EF8ACD-F0EF-4312-A016-6AA5F695B476} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
+		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
+		{327F82B8-6770-403C-B56E-6FCF881FD072} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {0FFA0840-D029-3752-A1CB-5699E0B6EA23}
