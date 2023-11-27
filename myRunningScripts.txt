@@ -19,3 +19,32 @@ palace _palace_examples/rings/rings.json, 36s for OpenMP
 palace _palace_examples/spheres/spheres.json, 20s for OpenMP
 
 
+
+
+=== CUDA building ===
+#ifndef __CUDACC__  
+#define __CUDACC__
+#endif
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+//#include <device_functions.h>
+
+
+
+=== CUDA libs ===
+MAGMA\magma.lib
+MAGMA\magma_sparse.lib
+$(CUDA_PATH)\lib\x64\cublas.lib
+$(CUDA_PATH)\lib\x64\cudart.lib
+$(CUDA_PATH)\lib\x64\cuda.lib
+$(CUDA_PATH)\lib\x64\cusparse.lib
+$(CUDA_PATH)\lib\x64\nvrtc.lib
+
+
+
+
+=== Currently CUDA Windows building issues ===
+1. In MFEM, On Windows, the enclosing parent function ("AddWithMarkers_") for an extended __host__ __device__ lambda cannot have internal or no linkage.
+2. 
+
