@@ -18,7 +18,7 @@
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>palace\gslib-palace_d.lib;palace\mfem-palace_d.lib;palace\mfem-common-palace_d.lib;palace\libCEED-palace_d.lib;palace\arpack_d.lib;palace\parpack_d.lib;palace\libpalace_d.lib;msmpi.lib;msmpifec.lib;hypre\HYPRE_d.lib;fmt\fmtd.lib;metis\metis_d.lib;PETSc\Debug\libpetsc.lib;Debug\dmumps_d.lib;Debug\dmumps_c_d.lib;Debug\mumps_common_c_d.lib;Debug\mumps_common_d.lib;Debug\pord.lib;libxsmm\xsmm_d.lib;zlib\zlib.lib;mkl_core_dll.lib;mkl_intel_lp64_dll.lib;mkl_sequential_dll.lib;mkl_scalapack_lp64_dll.lib;mkl_intel_thread_dll.lib;mkl_blacs_lp64_dll.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>palace\gslib-palace_d.lib;palace\mfem-palace_d.lib;palace\mfem-common-palace_d.lib;palace\libCEED-palace_d.lib;palace\arpack_d.lib;palace\parpack_d.lib;palace\libpalace_d.lib;msmpi.lib;msmpifec.lib;hypre\HYPRE_d.lib;fmt\fmtd.lib;metis\metis_d.lib;PETSc\Debug\libpetsc.lib;dmumps_d.lib;dmumps_c_d.lib;mumps_common_c_d.lib;mumps_common_d.lib;pord.lib;libxsmm\xsmm_d.lib;zlib\zlib.lib;mkl_core_dll.lib;mkl_intel_lp64_dll.lib;mkl_sequential_dll.lib;mkl_scalapack_lp64_dll.lib;mkl_intel_thread_dll.lib;mkl_blacs_lp64_dll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup />
