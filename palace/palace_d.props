@@ -6,7 +6,7 @@
     <OutDir>$(Platform)\$(Configuration)\</OutDir>
     <TargetName>$(ProjectName)_d</TargetName>
     <IncludePath>$(IncludePath)</IncludePath>
-    <LibraryPath>$(WELSIM_LIBPACK)\lib;$(MSMPI_LIB64);$(IFORT_COMPILER22)\compiler\lib\intel64_win;$(WELSIM_LIBPACK)\lib\mumps;$(MKLROOT)\lib\intel64;$(LibraryPath)</LibraryPath>
+    <LibraryPath>$(WELSIM_LIBPACK)\lib;$(MSMPI_LIB64);$(IFORT_COMPILER22)\compiler\lib\intel64_win;$(WELSIM_LIBPACK)\lib\mumps;$(INTEL_MKL)\lib\intel64;$(LibraryPath)</LibraryPath>
     <ExternalIncludePath>$(MSMPI_INC);$(INTEL_MKL)\include;$(WELSIM_LIBPACK)\include\palace\mfem;$(WELSIM_LIBPACK)\include\palace\libCEED;D:\WelSimLLC-github\palace\palace;$(WELSIM_LIBPACK)\include\hypre;$(WELSIM_LIBPACK)\include\zlib;$(WELSIM_LIBPACK)\include\mumps;$(WELSIM_LIBPACK)\include\eigen3;$(WELSIM_LIBPACK)\include\petsc;$(WELSIM_LIBPACK)\include\fmt;$(WELSIM_LIBPACK)\include;.\;$(CUDA_PATH)\include</ExternalIncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
@@ -14,7 +14,7 @@
       <Command>postbuild_palace_d</Command>
     </PostBuildEvent>
     <ClCompile>
-      <PreprocessorDefinitions>_UNICODE;UNICODE;CEED_SKIP_VISIBILITY;PALACE_WITH_ARPACK;_CRT_SECURE_NO_WARNINGS;LIBXSMM_TARGET_ARCH = LIBXSMM_X86_GENERIC;_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;CEED_SKIP_VISIBILITY;PALACE_WITH_ARPACK;_CRT_SECURE_NO_WARNINGS;LIBXSMM_TARGET_ARCH = LIBXSMM_X86_GENERIC;_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING;MFEM_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
     </ClCompile>
     <Link>

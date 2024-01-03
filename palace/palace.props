@@ -5,7 +5,7 @@
   <PropertyGroup>
     <OutDir>$(Platform)\$(Configuration)\</OutDir>
     <IncludePath>$(IncludePath)</IncludePath>
-    <LibraryPath>$(WELSIM_LIBPACK)\lib\mumps;$(WELSIM_LIBPACK)\lib;$(IFORT_COMPILER22)\compiler\lib\intel64_win;$(MSMPI_LIB64);$(MKLROOT)\lib\intel64;$(LibraryPath)</LibraryPath>
+    <LibraryPath>$(WELSIM_LIBPACK)\lib\mumps;$(WELSIM_LIBPACK)\lib;$(IFORT_COMPILER22)\compiler\lib\intel64_win;$(MSMPI_LIB64);$(INTEL_MKL)\lib\intel64;$(LibraryPath)</LibraryPath>
     <ExternalIncludePath>$(MSMPI_INC);$(INTEL_MKL)\include;$(WELSIM_LIBPACK)\include\palace\mfem;$(WELSIM_LIBPACK)\include\palace\libCEED;$(WELSIM_LIBPACK)\include\fmt;$(WELSIM_LIBPACK)\include\hypre;$(WELSIM_LIBPACK)\include\zlib;$(WELSIM_LIBPACK)\include\mumps;$(WELSIM_LIBPACK)\include\petsc;$(WELSIM_LIBPACK)\include\eigen3;$(WELSIM_LIBPACK)\include;.\;$(CUDA_PATH)\include;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup>
