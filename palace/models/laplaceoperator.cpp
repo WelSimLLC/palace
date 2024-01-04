@@ -111,6 +111,16 @@ std::map<int, mfem::Array<int>> ConstructSources(const IoData &iodata)
   return source_attr_lists;
 }
 
+std::map<int, double> ConstructBCValues(const IoData &iodata)
+{
+  std::map<int, double> values;
+  for (const auto &[idx, data] : iodata.boundaries.lumpedport)
+  {
+    values[idx] = data.voltage;
+  }
+  return values;
+}
+
 }  // namespace
 
 LaplaceOperator::LaplaceOperator(const IoData &iodata,
@@ -125,7 +135,7 @@ LaplaceOperator::LaplaceOperator(const IoData &iodata,
     h1_fespaces(fem::ConstructFiniteElementSpaceHierarchy<mfem::H1_FECollection>(
         iodata.solver.linear.mg_max_levels, mesh, h1_fecs, &dbc_marker, &dbc_tdof_lists)),
     nd_fespace(h1_fespaces.GetFinestFESpace(), mesh.back().get(), nd_fec.get()),
-    mat_op(iodata, *mesh.back()), source_attr_lists(ConstructSources(iodata))
+    mat_op(iodata, *mesh.back()), source_attr_lists(ConstructSources(iodata)), dbc_values(ConstructBCValues(iodata))
 {
   // Print essential BC information.
   if (dbc_marker.Size() && dbc_marker.Max() > 0)
@@ -194,8 +204,12 @@ void LaplaceOperator::GetExcitationVector(int idx, const Operator &K, Vector &X,
   mfem::Array<int> source_marker;
   const mfem::Array<int> &source_list = source_attr_lists[idx];
   mesh::AttrToMarker(dbc_marker.Size(), source_list, source_marker);
-  mfem::ConstantCoefficient one(1.0);
-  x.ProjectBdrCoefficient(one, source_marker);  // Values are only correct on master
+  mfem::ConstantCoefficient dbc_val(1.0);
+  std::map<int, double>::iterator it = dbc_values.find(idx);
+  if (it != dbc_values.end()) {
+    dbc_val = mfem::ConstantCoefficient(it->second);
+  }
+  x.ProjectBdrCoefficient(dbc_val, source_marker);  // Values are only correct on master
 
   // Eliminate the essential BC to get the RHS vector.
   X.SetSize(GetH1Space().GetTrueVSize());

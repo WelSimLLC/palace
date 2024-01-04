@@ -3,11 +3,11 @@
   {
     "Type": "Transient",
     "Verbose": 2,
-    "Output": "postpro/open"
+    "Output": "D:/WelSimLLC/executable28/_palace_examples/coaxial/postpro/open"
   },
   "Model":
   {
-    "Mesh": "mesh/coaxial.msh",
+    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/coaxial/mesh/coaxial.msh",
     "L0": 1.0e-3  // mm
   },
   "Domains":

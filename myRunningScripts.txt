@@ -1,0 +1,51 @@
+palace_d _palace_examples/spheres/spheres.json
+
+Electrostatic:
+palace _palace_examples/spheres/spheres.json, 20s for OpenMP
+
+Magnetostatic:
+palace _palace_examples/rings/rings.json, 36s for OpenMP
+
+Eigenmode:
+palace _palace_examples/cavity/cavity_impedance.json, 14s for OpenMP
+palace _palace_examples/cavity/cavity_pec.json, 10s for OpenMP
+
+Driven:
+palace _palace_examples/cpw/cpw_lumped_adaptive.json, 216s for OpenMP
+palace _palace_examples/cpw/cpw_lumped_uniform.json, 170s for OpenMP
+palace _palace_examples/cpw/cpw_wave_adaptive.json
+palace _palace_examples/cpw/cpw_wave_uniform.json
+
+Transient:
+palace _palace_examples/coaxial/coaxial_matched.json, 30s for OpenMP
+palace _palace_examples/coaxial/coaxial_open.json, 29s for OpenMP
+palace _palace_examples/coaxial/coaxial_short.json, 29s for OpenMP
+
+
+=== CUDA building ===
+#ifndef __CUDACC__  
+#define __CUDACC__
+#endif
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+//#include <device_functions.h>
+
+
+
+=== CUDA libs ===
+MAGMA\magma.lib
+MAGMA\magma_sparse.lib
+$(CUDA_PATH)\lib\x64\cublas.lib
+$(CUDA_PATH)\lib\x64\cudart.lib
+$(CUDA_PATH)\lib\x64\cuda.lib
+$(CUDA_PATH)\lib\x64\cusparse.lib
+$(CUDA_PATH)\lib\x64\nvrtc.lib
+
+
+
+
+=== Currently CUDA Windows building issues ===
+1. In MFEM, On Windows, the enclosing parent function ("AddWithMarkers_") for an extended __host__ __device__ lambda cannot have internal or no linkage.
+2. 
+

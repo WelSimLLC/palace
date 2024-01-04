@@ -3,11 +3,11 @@
   {
     "Type": "Magnetostatic",
     "Verbose": 2,
-    "Output": "postpro"
+    "Output": "D:/WelSimLLC/executable28/_palace_examples/rings/postpro"
   },
   "Model":
   {
-    "Mesh": "mesh/rings.msh",
+    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/rings/mesh/rings.msh",
     "L0": 1.0e-6  // um
   },
   "Domains":

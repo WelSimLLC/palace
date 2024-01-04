@@ -947,6 +947,13 @@ void LumpedPortBoundaryData::SetUp(json &boundaries)
       }
     }
 
+    if (it->find("Voltage") != it->end()) {
+      data.voltage = it->value("Voltage", data.voltage);
+    }
+    else {
+      data.voltage = it->value("Voltage", 1.0);
+    }
+
     // Debug
     // std::cout << "Index: " << ret.first->first << '\n';
     // std::cout << "R: " << data.R << '\n';
@@ -970,6 +977,7 @@ void LumpedPortBoundaryData::SetUp(json &boundaries)
     it->erase("Rs");
     it->erase("Ls");
     it->erase("Cs");
+    it->erase("Voltage");
     it->erase("Excitation");
     it->erase("Attributes");
     it->erase("Direction");

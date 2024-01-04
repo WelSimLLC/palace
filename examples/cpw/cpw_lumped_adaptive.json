@@ -3,11 +3,11 @@
   {
     "Type": "Driven",
     "Verbose": 2,
-    "Output": "postpro/lumped_adaptive"
+    "Output": "D:/WelSimLLC/executable28/_palace_examples/cpw/postpro/lumped_adaptive"
   },
   "Model":
   {
-    "Mesh": "mesh/cpw_lumped.msh",
+    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/cpw/mesh/cpw_lumped.msh",
     "L0": 1.0e-6,  // μm
     "Refinement":
     {

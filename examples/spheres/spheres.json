@@ -3,11 +3,11 @@
   {
     "Type": "Electrostatic",
     "Verbose": 2,
-    "Output": "postpro"
+    "Output": "D:/WelSimLLC/executable28/_palace_examples/spheres/postpro"
   },
   "Model":
   {
-    "Mesh": "mesh/spheres.msh",
+    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/spheres/mesh/spheres.msh",
     "L0": 1.0e-2  // cm
   },
   "Domains":

@@ -3,11 +3,11 @@
   {
     "Type": "Eigenmode",
     "Verbose": 2,
-    "Output": "postpro/impedance"
+    "Output": "D:/WelSimLLC/executable28/_palace_examples/cavity/postpro/impedance"
   },
   "Model":
   {
-    "Mesh": "mesh/cavity.msh",
+    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/cavity/mesh/cavity.msh",
     "L0": 1.0e-2,  // cm
     "Refinement":
     {

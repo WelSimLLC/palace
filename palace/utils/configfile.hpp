@@ -414,6 +414,9 @@ public:
   double Ls = 0.0;
   double Cs = 0.0;
 
+  // Voltage for terminal BC [V]
+  double voltage = 0.0;
+
   // Flag for source term in driven and transient simulations.
   bool excitation = false;
 
