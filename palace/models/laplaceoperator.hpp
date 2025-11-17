@@ -46,6 +46,8 @@ private:
 
   // Boundary attributes for each terminal index.
   std::map<int, mfem::Array<int>> source_attr_lists;
+  std::map<int, double> dbc_values;
+
 
 public:
   LaplaceOperator(const IoData &iodata,
@@ -56,6 +58,7 @@ public:
 
   // Access source attribute lists.
   const auto &GetSources() const { return source_attr_lists; }
+  const auto &GetBCValues() const { return dbc_values; }
 
   // Return the parallel finite element space objects.
   auto &GetH1Spaces() { return h1_fespaces; }
