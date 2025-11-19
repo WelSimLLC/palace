@@ -13,12 +13,7 @@
       "required": ["Attributes"],
       "properties":
       {
-        "Attributes":
-        {
-          "type": "array",
-          "additionalItems": false,
-          "items": { "type": "integer"}
-        }
+        "Attributes": { "$ref": "#/$defs/Attributes" }
       }
     },
     "PMC":
@@ -28,12 +23,7 @@
       "required": ["Attributes"],
       "properties":
       {
-        "Attributes":
-        {
-          "type": "array",
-          "additionalItems": false,
-          "items": { "type": "integer"}
-        }
+        "Attributes": { "$ref": "#/$defs/Attributes" }
       }
     },
     "Impedance":
@@ -47,12 +37,7 @@
         "required": ["Attributes"],
         "properties":
         {
-          "Attributes":
-          {
-            "type": "array",
-            "additionalItems": false,
-            "items": { "type": "integer"}
-          },
+          "Attributes": { "$ref": "#/$defs/Attributes" },
           "Rs": { "type": "number" },
           "Ls": { "type": "number" },
           "Cs": { "type": "number" }
@@ -66,12 +51,7 @@
       "required": ["Attributes"],
       "properties":
       {
-        "Attributes":
-        {
-          "type": "array",
-          "additionalItems": false,
-          "items": { "type": "integer"}
-        },
+        "Attributes": { "$ref": "#/$defs/Attributes" },
         "Order": { "type": "integer" }
       }
     },
@@ -86,12 +66,7 @@
         "required": ["Attributes", "Conductivity"],
         "properties":
         {
-          "Attributes":
-          {
-            "type": "array",
-            "additionalItems": false,
-            "items": { "type": "integer"}
-          },
+          "Attributes": { "$ref": "#/$defs/Attributes" },
           "Conductivity": { "type": "number" },
           "Permeability": { "type": "number" },
           "Thickness": { "type": "number" },
@@ -111,12 +86,7 @@
         "properties":
         {
           "Index": { "type": "integer" },
-          "Attributes":
-          {
-            "type": "array",
-            "additionalItems": false,
-            "items": { "type": "integer"}
-          },
+          "Attributes": { "$ref": "#/$defs/Attributes" },
           "Direction": { "$ref": "#/$defs/Direction" },
           "CoordinateSystem": { "type": "string", "enum": ["Cartesian", "Cylindrical"] },
           "R": { "type": "number" },
@@ -125,7 +95,13 @@
           "Rs": { "type": "number" },
           "Ls": { "type": "number" },
           "Cs": { "type": "number" },
-          "Excitation": { "type": "boolean" },
+          "Excitation": {
+            "oneOf" : [
+              { "type": "boolean" },
+              { "type": "integer", "minimum": 0 }
+            ]
+          },
+          "Active": { "type": "boolean" },
           "Elements":
           {
             "type": "array",
@@ -137,12 +113,7 @@
               "required": ["Attributes", "Direction"],
               "properties":
               {
-                "Attributes":
-                {
-                  "type": "array",
-                  "additionalItems": false,
-                  "items": { "type": "integer"}
-                },
+                "Attributes": { "$ref": "#/$defs/Attributes" },
                 "Direction": { "$ref": "#/$defs/Direction" },
                 "CoordinateSystem": { "type": "string", "enum": ["Cartesian", "Cylindrical"] }
               }
@@ -163,15 +134,21 @@
         "properties":
         {
           "Index": { "type": "integer" },
-          "Attributes":
-          {
-            "type": "array",
-            "additionalItems": false,
-            "items": { "type": "integer"}
-          },
+          "Attributes": { "$ref": "#/$defs/Attributes" },
           "Mode": { "type": "integer", "exclusiveMinimum": 0 },
           "Offset": { "type": "number", "minimum": 0.0 },
-          "Excitation": { "type": "boolean" }
+          "SolverType": { "type": "string" },
+          "Excitation": {
+            "oneOf" : [
+              { "type": "boolean" },
+              { "type": "integer", "minimum": 0 }
+            ]
+          },
+          "Active": { "type": "boolean" },
+          "MaxIts": { "type": "integer", "exclusiveMinimum": 0 },
+          "KSPTol": { "type": "number", "exclusiveMinimum": 0.0 },
+          "EigenTol": { "type": "number", "exclusiveMinimum": 0.0 },
+          "Verbose": { "type": "integer", "minimum": 0.0 }
         }
       }
     },
@@ -182,12 +159,7 @@
       "required": ["Attributes"],
       "properties":
       {
-        "Attributes":
-        {
-          "type": "array",
-          "additionalItems": false,
-          "items": { "type": "integer"}
-        }
+        "Attributes": { "$ref": "#/$defs/Attributes" }
       }
     },
     "SurfaceCurrent":
@@ -202,12 +174,7 @@
         "properties":
         {
           "Index": { "type": "integer" },
-          "Attributes":
-          {
-            "type": "array",
-            "additionalItems": false,
-            "items": { "type": "integer"}
-          },
+          "Attributes": { "$ref": "#/$defs/Attributes" },
           "Direction": { "$ref": "#/$defs/Direction" },
           "CoordinateSystem": { "type": "string", "enum": ["Cartesian", "Cylindrical"] },
           "Elements":
@@ -221,12 +188,7 @@
               "required": ["Attributes", "Direction"],
               "properties":
               {
-                "Attributes":
-                {
-                  "type": "array",
-                  "additionalItems": false,
-                  "items": { "type": "integer"}
-                },
+                "Attributes": { "$ref": "#/$defs/Attributes" },
                 "Direction": { "$ref": "#/$defs/Direction" },
                 "CoordinateSystem": { "type": "string", "enum": ["Cartesian", "Cylindrical"] }
               }
@@ -242,12 +204,7 @@
       "required": ["Attributes"],
       "properties":
       {
-        "Attributes":
-        {
-          "type": "array",
-          "additionalItems": false,
-          "items": { "type": "integer"}
-        }
+        "Attributes": { "$ref": "#/$defs/Attributes" }
       }
     },
     "ZeroCharge":
@@ -257,12 +214,7 @@
       "required": ["Attributes"],
       "properties":
       {
-        "Attributes":
-        {
-          "type": "array",
-          "additionalItems": false,
-          "items": { "type": "integer"}
-        }
+        "Attributes": { "$ref": "#/$defs/Attributes" }
       }
     },
     "Terminal":
@@ -277,11 +229,34 @@
         "properties":
         {
           "Index": { "type": "integer" },
-          "Attributes":
+          "Attributes": { "$ref": "#/$defs/Attributes" }
+        }
+      }
+    },
+    "Periodic":
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["BoundaryPairs"],
+      "properties":
+      {
+        "FloquetWaveVector": { "$ref": "#/$defs/FloquetWaveVector" },
+        "BoundaryPairs":
+        {
+          "type": "array",
+          "additionalItems": false,
+          "items":
           {
-            "type": "array",
-            "additionalItems": false,
-            "items": { "type": "integer"}
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["DonorAttributes", "ReceiverAttributes"],
+            "properties":
+            {
+              "DonorAttributes": { "$ref": "#/$defs/DonorAttributes" },
+              "ReceiverAttributes": { "$ref": "#/$defs/ReceiverAttributes" },
+              "Translation": { "$ref": "#/$defs/Translation" },
+              "AffineTransformation": { "$ref": "#/$defs/AffineTransformation" }
+            }
           }
         }
       }
@@ -293,7 +268,7 @@
       "required": [],
       "properties":
       {
-        "Capacitance":
+        "SurfaceFlux":
         {
           "type": "array",
           "additionalItems": false,
@@ -301,39 +276,21 @@
           {
             "type": "object",
             "additionalProperties": false,
-            "required": ["Index", "Attributes"],
+            "required": ["Index", "Attributes", "Type"],
             "properties":
             {
               "Index": { "type": "integer" },
-              "Attributes":
+              "Attributes": { "$ref": "#/$defs/Attributes" },
+              "Type": { "type": "string", "enum": ["Electric", "Magnetic", "Power"] },
+              "TwoSided": { "type": "boolean" },
+              "Center":
               {
                 "type": "array",
                 "additionalItems": false,
-                "items": { "type": "integer"}
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3
               }
-            }
-          }
-        },
-        "Inductance":
-        {
-          "type": "array",
-          "additionalItems": false,
-          "items":
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["Index", "Attributes", "Direction"],
-            "properties":
-            {
-              "Index": { "type": "integer" },
-              "Attributes":
-              {
-                "type": "array",
-                "additionalItems": false,
-                "items": { "type": "integer"}
-              },
-              "Direction": { "$ref": "#/$defs/Direction" },
-              "CoordinateSystem": { "type": "string", "enum": ["Cartesian", "Cylindrical"] }
             }
           }
         },
@@ -345,45 +302,32 @@
           {
             "type": "object",
             "additionalProperties": false,
-            "required": ["Index"],
+            "required": ["Index", "Attributes", "Thickness", "Permittivity"],
             "properties":
             {
               "Index": { "type": "integer" },
-              "Attributes":
-              {
-                "type": "array",
-                "additionalItems": false,
-                "items": { "type": "integer"}
-              },
-              "Side": { "$ref": "#/$defs/Direction" },
-              "CoordinateSystem": { "type": "string", "enum": ["Cartesian", "Cylindrical"] },
-              "Permittivity": { "type": "number" },
-              "PermittivityMA": { "type": "number" },
-              "PermittivityMS": { "type": "number" },
-              "PermittivitySA": { "type": "number" },
-              "LossTan": { "type": "number" },
+              "Attributes": { "$ref": "#/$defs/Attributes" },
+              "Type": { "type": "string", "enum": ["Default", "MA", "MS", "SA"] },
               "Thickness": { "type": "number" },
-              "Elements":
-              {
+              "Permittivity": { "type": "number" },
+              "LossTan": { "type": "number" }
+            }
+          }
+        },
+        "FarField": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["Attributes"],
+          "properties": {
+            "Attributes": { "$ref": "#/$defs/Attributes" },
+            "NSample": { "type": "integer", "minimum": 0 },
+            "ThetaPhis": {
+              "type": "array",
+              "items": {
                 "type": "array",
-                "additionalItems": false,
-                "items":
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["Attributes"],
-                  "properties":
-                  {
-                    "Attributes":
-                    {
-                      "type": "array",
-                      "additionalItems": false,
-                      "items": { "type": "integer"}
-                    },
-                    "Side": { "$ref": "#/$defs/Direction" },
-                    "CoordinateSystem": { "type": "string", "enum": ["Cartesian", "Cylindrical"] }
-                  }
-                }
+                "items": {"type": "number"},
+                "minItems": 2,
+                "maxItems": 2
               }
             }
           }
@@ -393,6 +337,51 @@
   },
   "$defs":
   {
+    "Attributes":
+    {
+      "type": "array",
+      "additionalItems": false,
+      "items": { "type": "integer"},
+      "minItems": 1
+    },
+    "DonorAttributes":
+    {
+      "type": "array",
+      "additionalItems": false,
+      "items": { "type": "integer"},
+      "minItems": 1
+    },
+    "ReceiverAttributes":
+    {
+      "type": "array",
+      "additionalItems": false,
+      "items": { "type": "integer"},
+      "minItems": 1
+    },
+    "Translation":
+    {
+      "type": "array",
+      "additionalItems": false,
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "AffineTransformation":
+    {
+      "type": "array",
+      "additionalItems": false,
+      "items": { "type": "number" },
+      "minItems": 16,
+      "maxItems": 16
+    },
+    "FloquetWaveVector":
+    {
+      "type": "array",
+      "additionalItems": false,
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
     "Direction":
     {
       "anyOf":
@@ -404,11 +393,12 @@
         },
         {
           "type": "array",
+          "additionalItems": false,
           "items": { "type": "number" },
-          "minItems": 3, "maxItems": 3
+          "minItems": 3,
+          "maxItems": 3
         }
       ]
     }
   }
 }
-

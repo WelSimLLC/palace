@@ -12,7 +12,6 @@
 namespace palace
 {
 
-class AuxiliaryFiniteElementSpace;
 class FiniteElementSpace;
 
 //
@@ -25,8 +24,8 @@ private:
   HYPRE_Solver ams;
 
   // Parameters used for preconditioner construction.
-  const int cycle_type, space_dim, ams_it, ams_smooth_it, amg_agg_levels;
-  const bool ams_singular;
+  const int cycle_type, space_dim, ams_it, ams_smooth_it;
+  const bool ams_singular, agg_coarsen;
 
   // Control print level for debugging.
   const int print;
@@ -40,8 +39,8 @@ private:
   std::unique_ptr<mfem::HypreParVector> x, y, z;
 
   // Helper function to set up the auxiliary objects required by the AMS solver.
-  void ConstructAuxiliaryMatrices(const FiniteElementSpace &nd_fespace,
-                                  const AuxiliaryFiniteElementSpace &h1_fespace);
+  void ConstructAuxiliaryMatrices(FiniteElementSpace &nd_fespace,
+                                  FiniteElementSpace &h1_fespace);
 
   // Helper function to construct and configure the AMS solver.
   void InitializeSolver();
@@ -49,21 +48,15 @@ private:
 public:
   // Constructor requires the ND space, but will construct the H1 and (H1)ᵈ spaces
   // internally as needed.
-  HypreAmsSolver(const FiniteElementSpace &nd_fespace,
-                 const AuxiliaryFiniteElementSpace &h1_fespace, int cycle_it, int smooth_it,
-                 int agg_coarsen, bool vector_interp, bool op_singular, int print);
-  HypreAmsSolver(const IoData &iodata, bool coarse_solver,
-                 const FiniteElementSpace &nd_fespace,
-                 const AuxiliaryFiniteElementSpace &h1_fespace, int print)
+  HypreAmsSolver(FiniteElementSpace &nd_fespace, FiniteElementSpace &h1_fespace,
+                 int cycle_it, int smooth_it, bool vector_interp, bool singular_op,
+                 bool agg_coarsen, int print);
+  HypreAmsSolver(const IoData &iodata, bool coarse_solver, FiniteElementSpace &nd_fespace,
+                 FiniteElementSpace &h1_fespace, int print)
     : HypreAmsSolver(
           nd_fespace, h1_fespace, coarse_solver ? 1 : iodata.solver.linear.mg_cycle_it,
-          iodata.solver.linear.mg_smooth_it,
-          (iodata.problem.type == config::ProblemData::Type::TRANSIENT ||
-           iodata.problem.type == config::ProblemData::Type::MAGNETOSTATIC)
-              ? 1
-              : 0,
-          iodata.solver.linear.ams_vector,
-          (iodata.problem.type == config::ProblemData::Type::MAGNETOSTATIC), print)
+          iodata.solver.linear.mg_smooth_it, iodata.solver.linear.ams_vector_interp,
+          iodata.solver.linear.ams_singular_op, iodata.solver.linear.amg_agg_coarsen, print)
   {
   }
   ~HypreAmsSolver() override;

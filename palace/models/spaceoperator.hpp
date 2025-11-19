@@ -14,6 +14,7 @@
 #include "models/farfieldboundaryoperator.hpp"
 #include "models/lumpedportoperator.hpp"
 #include "models/materialoperator.hpp"
+#include "models/portexcitations.hpp"
 #include "models/surfaceconductivityoperator.hpp"
 #include "models/surfacecurrentoperator.hpp"
 #include "models/surfaceimpedanceoperator.hpp"
@@ -23,8 +24,7 @@ namespace palace
 {
 
 class IoData;
-class SumCoefficient;
-class SumMatrixCoefficient;
+class Mesh;
 
 //
 // A class handling spatial discretization of the governing equations.
@@ -32,28 +32,23 @@ class SumMatrixCoefficient;
 class SpaceOperator
 {
 private:
-  const int pa_order_threshold;  // Order above which to use partial assembly vs. full
-  const bool skip_zeros;         // Skip zeros during full assembly of matrices
-  const bool pc_mat_real;        // Use real-valued matrix for preconditioner
-  const bool pc_mat_shifted;     // Use shifted mass matrix for preconditioner
+  const bool pc_mat_real;     // Use real-valued matrix for preconditioner
+  const bool pc_mat_shifted;  // Use shifted mass matrix for preconditioner
 
   // Helper variables for log file printing.
   bool print_hdr, print_prec_hdr;
 
-  // Perfect electrical conductor essential boundary condition markers.
-  mfem::Array<int> dbc_marker, aux_bdr_marker;
+  // Perfect electrical conductor essential boundary condition attributes.
+  mfem::Array<int> dbc_attr, aux_bdr_attr;
   std::vector<mfem::Array<int>> nd_dbc_tdof_lists, h1_dbc_tdof_lists, aux_bdr_tdof_lists;
-  void CheckBoundaryProperties();
 
   // Objects defining the finite element spaces for the electric field (Nedelec) and
   // magnetic flux density (Raviart-Thomas) on the given mesh. The H1 spaces are used for
   // various purposes throughout the code including postprocessing.
   std::vector<std::unique_ptr<mfem::ND_FECollection>> nd_fecs;
   std::vector<std::unique_ptr<mfem::H1_FECollection>> h1_fecs;
-  std::unique_ptr<mfem::RT_FECollection> rt_fec;
-  FiniteElementSpaceHierarchy nd_fespaces;
-  AuxiliaryFiniteElementSpaceHierarchy h1_fespaces;
-  AuxiliaryFiniteElementSpace rt_fespace;
+  std::vector<std::unique_ptr<mfem::RT_FECollection>> rt_fecs;
+  FiniteElementSpaceHierarchy nd_fespaces, h1_fespaces, rt_fespaces;
 
   // Operator for domain material properties.
   MaterialOperator mat_op;
@@ -66,28 +61,50 @@ private:
   WavePortOperator wave_port_op;
   SurfaceCurrentOperator surf_j_op;
 
+  PortExcitations port_excitation_helper;
+
+  mfem::Array<int> SetUpBoundaryProperties(const IoData &iodata, const mfem::ParMesh &mesh);
+  void CheckBoundaryProperties();
+
   // Helper functions for building the bilinear forms corresponding to the discretized
   // operators in Maxwell's equations.
-  void AddStiffnessCoefficients(double coef, SumMatrixCoefficient &df,
-                                SumMatrixCoefficient &f);
-  void AddStiffnessBdrCoefficients(double coef, SumMatrixCoefficient &fb);
-  void AddDampingCoefficients(double coef, SumMatrixCoefficient &f);
-  void AddDampingBdrCoefficients(double coef, SumMatrixCoefficient &fb);
-  void AddRealMassCoefficients(double coef, SumMatrixCoefficient &f);
-  void AddRealMassBdrCoefficients(double coef, SumMatrixCoefficient &fb);
-  void AddImagMassCoefficients(double coef, SumMatrixCoefficient &f);
-  void AddAbsMassCoefficients(double coef, SumMatrixCoefficient &f);
-  void AddExtraSystemBdrCoefficients(double omega, SumCoefficient &dfbr,
-                                     SumCoefficient &dfbi, SumMatrixCoefficient &fbr,
-                                     SumMatrixCoefficient &fbi);
+  void AddStiffnessCoefficients(double coeff, MaterialPropertyCoefficient &df,
+                                MaterialPropertyCoefficient &f);
+  void AddStiffnessBdrCoefficients(double coeff, MaterialPropertyCoefficient &fb);
+  void AddDampingCoefficients(double coeff, MaterialPropertyCoefficient &f);
+  void AddDampingBdrCoefficients(double coeff, MaterialPropertyCoefficient &fb);
+  void AddRealMassCoefficients(double coeff, MaterialPropertyCoefficient &f);
+  void AddRealMassBdrCoefficients(double coeff, MaterialPropertyCoefficient &fb);
+  void AddImagMassCoefficients(double coeff, MaterialPropertyCoefficient &f);
+  void AddAbsMassCoefficients(double coeff, MaterialPropertyCoefficient &f);
+  void AddExtraSystemBdrCoefficients(double omega, MaterialPropertyCoefficient &dfbr,
+                                     MaterialPropertyCoefficient &dfbi,
+                                     MaterialPropertyCoefficient &fbr,
+                                     MaterialPropertyCoefficient &fbi);
+  void AddRealPeriodicCoefficients(double coeff, MaterialPropertyCoefficient &f);
+  void AddImagPeriodicCoefficients(double coeff, MaterialPropertyCoefficient &f);
 
   // Helper functions for excitation vector assembly.
-  bool AddExcitationVector1Internal(Vector &RHS);
-  bool AddExcitationVector2Internal(double omega, ComplexVector &RHS);
+  bool AddExcitationVector1Internal(int excitation_idx, Vector &RHS);
+  bool AddExcitationVector2Internal(int excitation_idx, double omega, ComplexVector &RHS);
+
+  // Helper functions to build the preconditioner matrix.
+  void AssemblePreconditioner(std::complex<double> a0, std::complex<double> a1,
+                              std::complex<double> a2, double a3,
+                              std::vector<std::unique_ptr<Operator>> &br_vec,
+                              std::vector<std::unique_ptr<Operator>> &br_aux_vec,
+                              std::vector<std::unique_ptr<Operator>> &bi_vec,
+                              std::vector<std::unique_ptr<Operator>> &bi_aux_vec);
+  void AssemblePreconditioner(std::complex<double> a0, std::complex<double> a1,
+                              std::complex<double> a2, double a3,
+                              std::vector<std::unique_ptr<Operator>> &br_vec,
+                              std::vector<std::unique_ptr<Operator>> &br_aux_vec);
+  void AssemblePreconditioner(double a0, double a1, double a2, double a3,
+                              std::vector<std::unique_ptr<Operator>> &br_vec,
+                              std::vector<std::unique_ptr<Operator>> &br_aux_vec);
 
 public:
-  SpaceOperator(const IoData &iodata,
-                const std::vector<std::unique_ptr<mfem::ParMesh>> &mesh);
+  SpaceOperator(const IoData &iodata, const std::vector<std::unique_ptr<Mesh>> &mesh);
 
   // Return list of all PEC boundary true dofs for all finite element space levels.
   const std::vector<mfem::Array<int>> &GetNDDbcTDofLists() const
@@ -118,6 +135,8 @@ public:
   const auto &GetWavePortOp() const { return wave_port_op; }
   const auto &GetSurfaceCurrentOp() const { return surf_j_op; }
 
+  const auto &GetPortExcitations() const { return port_excitation_helper; }
+
   // Return the parallel finite element space objects.
   auto &GetNDSpaces() { return nd_fespaces; }
   const auto &GetNDSpaces() const { return nd_fespaces; }
@@ -127,14 +146,19 @@ public:
   const auto &GetH1Spaces() const { return h1_fespaces; }
   auto &GetH1Space() { return h1_fespaces.GetFinestFESpace(); }
   const auto &GetH1Space() const { return h1_fespaces.GetFinestFESpace(); }
-  auto &GetRTSpace() { return rt_fespace; }
-  const auto &GetRTSpace() const { return rt_fespace; }
+  auto &GetRTSpaces() { return rt_fespaces; }
+  const auto &GetRTSpaces() const { return rt_fespaces; }
+  auto &GetRTSpace() { return rt_fespaces.GetFinestFESpace(); }
+  const auto &GetRTSpace() const { return rt_fespaces.GetFinestFESpace(); }
+
+  // Access the underlying mesh object.
+  const auto &GetMesh() const { return GetNDSpace().GetMesh(); }
 
   // Return the number of true (conforming) dofs on the finest ND space.
-  auto GlobalTrueVSize() { return GetNDSpace().GlobalTrueVSize(); }
+  auto GlobalTrueVSize() const { return GetNDSpace().GlobalTrueVSize(); }
 
   // Construct any part of the frequency-dependent complex linear system matrix:
-  //                     A = K + iω C - ω² (Mr + i Mi) + A2(ω) .
+  //                     A = K + iω C - ω² (Mr + i Mi) + A2(ω).
   // For time domain problems, any one of K, C, or M = Mr can be constructed. The argument
   // ω is required only for the constructing the "extra" matrix A2(ω).
   template <typename OperType>
@@ -149,7 +173,7 @@ public:
 
   // Construct the complete frequency or time domain system matrix using the provided
   // stiffness, damping, mass, and extra matrices:
-  //                     A = a0 K + a1 C + a2 (Mr + i Mi) + A2 .
+  //                     A = a0 K + a1 C + a2 (Mr + i Mi) + A2.
   // It is assumed that the inputs have been constructed using previous calls to
   // GetSystemMatrix() and the returned operator does not inherit ownership of any of them.
   template <typename OperType, typename ScalarType>
@@ -167,31 +191,34 @@ public:
                                                   const ComplexOperator *K,
                                                   const ComplexOperator *M);
 
-  // Construct the real, optionally SPD matrix for frequency or time domain linear system
-  // preconditioning (Mr > 0, Mi < 0, |Mr + i Mi| is done on the material property
-  // coefficient, not the matrix entries themselves):
-  //             B = a0 K + a1 C -/+ a2 |Mr + i Mi| + A2r(a3) + A2i(a3) .
-  template <typename OperType>
-  std::unique_ptr<OperType> GetPreconditionerMatrix(double a0, double a1, double a2,
-                                                    double a3);
+  // Construct the matrix for frequency or time domain linear system preconditioning. If it
+  // is real-valued (Mr > 0, Mi < 0, |Mr + Mi| is done on the material property coefficient,
+  // not the matrix entries themselves):
+  //             B = a0 K + a1 C -/+ a2 |Mr + Mi| + A2r(a3) + A2i(a3).
+  template <typename OperType, typename ScalarType>
+  std::unique_ptr<OperType> GetPreconditionerMatrix(ScalarType a0, ScalarType a1,
+                                                    ScalarType a2, double a3);
 
   // Construct and return the discrete curl or gradient matrices.
   const Operator &GetGradMatrix() const
   {
-    return GetH1Spaces().GetFinestFESpace().GetDiscreteInterpolator();
+    return GetNDSpace().GetDiscreteInterpolator(GetH1Space());
   }
-  const Operator &GetCurlMatrix() const { return GetRTSpace().GetDiscreteInterpolator(); }
+  const Operator &GetCurlMatrix() const
+  {
+    return GetRTSpace().GetDiscreteInterpolator(GetNDSpace());
+  }
 
   // Assemble the right-hand side source term vector for an incident field or current source
   // applied on specified excited boundaries. The return value indicates whether or not the
   // excitation is nonzero (and thus is true most of the time).
-  bool GetExcitationVector(Vector &RHS);
-  bool GetExcitationVector(double omega, ComplexVector &RHS);
+  bool GetExcitationVector(int excitation_idx, Vector &RHS);
+  bool GetExcitationVector(int excitation_idx, double omega, ComplexVector &RHS);
 
   // Separate out RHS vector as RHS = iω RHS1 + RHS2(ω). The return value indicates whether
   // or not the excitation is nonzero (and thus is true most of the time).
-  bool GetExcitationVector1(ComplexVector &RHS1);
-  bool GetExcitationVector2(double omega, ComplexVector &RHS2);
+  bool GetExcitationVector1(int excitation_idx, ComplexVector &RHS1);
+  bool GetExcitationVector2(int excitation_idx, double omega, ComplexVector &RHS2);
 
   // Construct a constant or randomly initialized vector which satisfies the PEC essential
   // boundary conditions.

@@ -3,29 +3,26 @@
   {
     "Type": "Driven",
     "Verbose": 2,
-    "Output": "D:/WelSimLLC/executable28/_palace_examples/cpw/postpro/lumped_uniform"
+    "Output": "postpro/lumped_uniform"
   },
   "Model":
   {
-    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/cpw/mesh/cpw_lumped.msh",
+    "Mesh": "mesh/cpw_lumped_0.msh",
     "L0": 1.0e-6,  // μm
-    "Refinement":
-    {
-      "UniformLevels": 1
-    }
+    "Refinement": {}
   },
   "Domains":
   {
     "Materials":
     [
       {
-        "Attributes": [2],  // Air
+        "Attributes": [1],  // Air
         "Permeability": 1.0,
         "Permittivity": 1.0,
         "LossTan": 0.0
       },
       {
-        "Attributes": [1],  // Sapphire
+        "Attributes": [2],  // Sapphire
         "Permeability": [0.99999975, 0.99999975, 0.99999979],
         "Permittivity": [9.3, 9.3, 11.5],
         "LossTan": [3.0e-5, 3.0e-5, 8.6e-5],
@@ -34,26 +31,22 @@
     ],
     "Postprocessing":
     {
-      "Dielectric":
+      "Energy":
       [
         {
           "Index": 1,
-          "Attributes": [1]
+          "Attributes": [2]
         }
       ],
       "Probe":
       [
         {
           "Index": 1,
-          "X": 2000,
-          "Y": 833,
-          "Z": 30
+          "Center": [2000, 833, 30]
         },
         {
           "Index": 2,
-          "X": 2000,
-          "Y": 833,
-          "Z": -30
+          "Center": [2000, 833, -30]
         }
       ]
     }
@@ -62,11 +55,11 @@
   {
     "PEC":
     {
-      "Attributes": [3]  // Metal trace
+      "Attributes": [13]  // Metal trace
     },
     "Absorbing":
     {
-      "Attributes": [13],
+      "Attributes": [4],
       "Order": 1
     },
     "LumpedPort":
@@ -74,22 +67,7 @@
       {
         "Index": 1,
         "R": 56.02,  // Ω, 2-element uniform
-        "Excitation": true,
-        "Elements":
-        [
-          {
-            "Attributes": [4],
-            "Direction": "+Y"
-          },
-          {
-            "Attributes": [8],
-            "Direction": "-Y"
-          }
-        ]
-      },
-      {
-        "Index": 2,
-        "R": 56.02,
+        "Excitation": 1,
         "Elements":
         [
           {
@@ -103,8 +81,9 @@
         ]
       },
       {
-        "Index": 3,
+        "Index": 2,
         "R": 56.02,
+        "Excitation": 2,
         "Elements":
         [
           {
@@ -118,7 +97,7 @@
         ]
       },
       {
-        "Index": 4,
+        "Index": 3,
         "R": 56.02,
         "Elements":
         [
@@ -131,18 +110,63 @@
             "Direction": "-Y"
           }
         ]
+      },
+      {
+        "Index": 4,
+        "R": 56.02,
+        "Elements":
+        [
+          {
+            "Attributes": [8],
+            "Direction": "+Y"
+          },
+          {
+            "Attributes": [12],
+            "Direction": "-Y"
+          }
+        ]
       }
     ],
     "Postprocessing":
     {
+      "SurfaceFlux":
+      [
+        {
+          "Index": 1,
+          "Attributes": [13],
+          "Type": "Electric",
+          "TwoSided": true
+        },
+        {
+          "Index": 2,
+          "Attributes": [4],
+          "Type": "Power"
+        }
+      ],
       "Dielectric":
       [
         {
           "Index": 1,
-          "Attributes": [12],
-          "Side": "+Z",
-          "Thickness": 2e-3,  // μm
-          "PermittivitySA": 4.0,
+          "Attributes": [14],
+          "Type": "SA",
+          "Thickness": 2.0e-3,  // μm
+          "Permittivity": 10.0,
+          "LossTan": 1.0
+        },
+        {
+          "Index": 2,
+          "Attributes": [13],
+          "Type": "MS",
+          "Thickness": 2.0e-3,  // μm
+          "Permittivity": 10.0,
+          "LossTan": 1.0
+        },
+        {
+          "Index": 3,
+          "Attributes": [13],
+          "Type": "MA",
+          "Thickness": 2.0e-3,  // μm
+          "Permittivity": 10.0,
           "LossTan": 1.0
         }
       ]
@@ -150,20 +174,32 @@
   },
   "Solver":
   {
-    "Order": 1,
+    "Order": 2,
+    "Device": "CPU",
     "Driven":
     {
-      "MinFreq": 2.0,  // GHz
-      "MaxFreq": 30.0,  // GHz
-      "FreqStep": 2.0,  // GHz
-      "SaveStep": 2
+      "Samples":
+      [
+        {
+          "Type": "Linear",
+          "MinFreq": 2.0,  // GHz
+          "MaxFreq": 32.0,  // GHz
+          "FreqStep": 6.0  // GHz
+        },
+        {
+          "Type": "Point",
+          "Freq": [17.0], // GHz
+          "SaveStep": 1
+        }
+      ],
+      "Save": [2.0, 32.0]
     },
     "Linear":
     {
       "Type": "Default",
       "KSPType": "GMRES",
       "Tol": 1.0e-8,
-      "MaxIts": 100
+      "MaxIts": 200
     }
   }
 }

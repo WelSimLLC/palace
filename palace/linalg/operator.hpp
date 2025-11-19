@@ -18,6 +18,8 @@ namespace palace
 // Functionality extending mfem::Operator from MFEM.
 //
 
+using Operator = mfem::Operator;
+
 // Abstract base class for complex-valued operators.
 class ComplexOperator
 {
@@ -37,18 +39,16 @@ public:
   int Width() const { return width; }
 
   // Test whether or not the operator is purely real or imaginary.
-  virtual bool IsReal() const;
-  virtual bool IsImag() const;
+  virtual bool IsReal() const { return !Imag(); }
+  virtual bool IsImag() const { return !Real(); }
 
-  // Test whether or not we can access the real and imaginary operator parts.
-  virtual bool HasReal() const;
-  virtual bool HasImag() const;
-
-  // Get access to the real and imaginary operator parts.
+  // Get access to the real and imaginary operator parts separately (may be empty if
+  // operator is purely real or imaginary).
   virtual const Operator *Real() const;
-  virtual Operator *Real();
   virtual const Operator *Imag() const;
-  virtual Operator *Imag();
+
+  // Diagonal assembly.
+  virtual void AssembleDiagonal(ComplexVector &diag) const;
 
   // Operator application.
   virtual void Mult(const ComplexVector &x, ComplexVector &y) const = 0;
@@ -75,13 +75,13 @@ class ComplexWrapperOperator : public ComplexOperator
 private:
   // Storage and access for real and imaginary parts of the operator.
   std::unique_ptr<Operator> data_Ar, data_Ai;
-  Operator *Ar, *Ai;
+  const Operator *Ar, *Ai;
 
   // Temporary storage for operator application.
   mutable ComplexVector tx, ty;
 
   ComplexWrapperOperator(std::unique_ptr<Operator> &&dAr, std::unique_ptr<Operator> &&dAi,
-                         Operator *pAr, Operator *pAi);
+                         const Operator *pAr, const Operator *pAi);
 
 public:
   // Construct a complex operator which inherits ownership of the input real and imaginary
@@ -89,16 +89,12 @@ public:
   ComplexWrapperOperator(std::unique_ptr<Operator> &&Ar, std::unique_ptr<Operator> &&Ai);
 
   // Non-owning constructor.
-  ComplexWrapperOperator(Operator *Ar, Operator *Ai);
+  ComplexWrapperOperator(const Operator *Ar, const Operator *Ai);
 
-  bool IsReal() const override { return Ai == nullptr; }
-  bool IsImag() const override { return Ar == nullptr; }
-  bool HasReal() const override { return Ar != nullptr; }
-  bool HasImag() const override { return Ai != nullptr; }
   const Operator *Real() const override { return Ar; }
-  Operator *Real() override { return Ar; }
   const Operator *Imag() const override { return Ai; }
-  Operator *Imag() override { return Ai; }
+
+  void AssembleDiagonal(ComplexVector &diag) const override;
 
   void Mult(const ComplexVector &x, ComplexVector &y) const override;
 
@@ -121,13 +117,14 @@ class SumOperator : public Operator
 {
 private:
   std::vector<std::pair<const Operator *, double>> ops;
+  mutable Vector z;
 
 public:
-  SumOperator(int s) : Operator(s) {}
-  SumOperator(int h, int w) : Operator(h, w) {}
-  SumOperator(const Operator &op, double c = 1.0);
+  SumOperator(int s) : Operator(s) { z.UseDevice(true); }
+  SumOperator(int h, int w) : Operator(h, w) { z.UseDevice(true); }
+  SumOperator(const Operator &op, double a = 1.0);
 
-  void AddOperator(const Operator &op, double c = 1.0);
+  void AddOperator(const Operator &op, double a = 1.0);
 
   void Mult(const Vector &x, Vector &y) const override;
 
@@ -157,6 +154,7 @@ class ProductOperatorHelper<ProductOperator, ComplexOperator> : public ComplexOp
 {
 public:
   ProductOperatorHelper(int h, int w) : ComplexOperator(h, w) {}
+
   void MultHermitianTranspose(const ComplexVector &x, ComplexVector &y) const override
   {
     const ComplexOperator &A = static_cast<const ProductOperator *>(this)->A;
@@ -164,6 +162,16 @@ public:
     ComplexVector &z = static_cast<const ProductOperator *>(this)->z;
     A.MultHermitianTranspose(x, z);
     B.MultHermitianTranspose(z, y);
+  }
+
+  void AddMultHermitianTranspose(const ComplexVector &x, ComplexVector &y,
+                                 const std::complex<double> a = 1.0) const override
+  {
+    const ComplexOperator &A = static_cast<const ProductOperator *>(this)->A;
+    const ComplexOperator &B = static_cast<const ProductOperator *>(this)->B;
+    ComplexVector &z = static_cast<const ProductOperator *>(this)->z;
+    A.MultHermitianTranspose(x, z);
+    B.AddMultHermitianTranspose(z, y, a);
   }
 };
 
@@ -175,6 +183,9 @@ class BaseProductOperator
 
   using VecType = typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
                                             ComplexVector, Vector>::type;
+  using ScalarType =
+      typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
+                                std::complex<double>, double>::type;
 
 private:
   const OperType &A, &B;
@@ -185,6 +196,7 @@ public:
     : ProductOperatorHelper<BaseProductOperator<OperType>, OperType>(A.Height(), B.Width()),
       A(A), B(B), z(B.Height())
   {
+    z.UseDevice(true);
   }
 
   void Mult(const VecType &x, VecType &y) const override
@@ -197,6 +209,19 @@ public:
   {
     A.MultTranspose(x, z);
     B.MultTranspose(z, y);
+  }
+
+  void AddMult(const VecType &x, VecType &y, const ScalarType a = 1.0) const override
+  {
+    B.Mult(x, z);
+    A.AddMult(z, y, a);
+  }
+
+  void AddMultTranspose(const VecType &x, VecType &y,
+                        const ScalarType a = 1.0) const override
+  {
+    A.MultTranspose(x, z);
+    B.AddMultTranspose(z, y, a);
   }
 };
 
@@ -221,7 +246,11 @@ class DiagonalOperatorHelper<DiagonalOperator, ComplexOperator> : public Complex
 {
 public:
   DiagonalOperatorHelper(int s) : ComplexOperator(s) {}
+
   void MultHermitianTranspose(const ComplexVector &x, ComplexVector &y) const override;
+
+  void AddMultHermitianTranspose(const ComplexVector &x, ComplexVector &y,
+                                 const std::complex<double> a = 1.0) const override;
 };
 
 template <typename OperType>
@@ -232,6 +261,9 @@ class BaseDiagonalOperator
 
   using VecType = typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
                                             ComplexVector, Vector>::type;
+  using ScalarType =
+      typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
+                                std::complex<double>, double>::type;
 
 private:
   const VecType &d;
@@ -245,6 +277,14 @@ public:
   void Mult(const VecType &x, VecType &y) const override;
 
   void MultTranspose(const VecType &x, VecType &y) const override { Mult(x, y); }
+
+  void AddMult(const VecType &x, VecType &y, const ScalarType a = 1.0) const override;
+
+  void AddMultTranspose(const VecType &x, VecType &y,
+                        const ScalarType a = 1.0) const override
+  {
+    AddMult(x, y, a);
+  }
 };
 
 using DiagonalOperator = BaseDiagonalOperator<Operator>;
@@ -259,6 +299,9 @@ class BaseMultigridOperator : public OperType
 {
   using VecType = typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
                                             ComplexVector, Vector>::type;
+  using ScalarType =
+      typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
+                                std::complex<double>, double>::type;
 
 private:
   std::vector<std::unique_ptr<OperType>> ops, aux_ops;
@@ -283,7 +326,6 @@ public:
   }
 
   bool HasAuxiliaryOperators() const { return !aux_ops.empty(); }
-
   auto GetNumLevels() const { return ops.size(); }
   auto GetNumAuxiliaryLevels() const { return aux_ops.size(); }
 
@@ -292,8 +334,7 @@ public:
 
   const OperType &GetOperatorAtLevel(std::size_t l) const
   {
-    MFEM_ASSERT(l >= 0 && l < GetNumLevels(),
-                "Out of bounds multigrid level operator requested!");
+    MFEM_ASSERT(l < GetNumLevels(), "Out of bounds multigrid level operator requested!");
     return *ops[l];
   }
   const OperType &GetAuxiliaryOperatorAtLevel(std::size_t l) const
@@ -304,9 +345,21 @@ public:
   }
 
   void Mult(const VecType &x, VecType &y) const override { GetFinestOperator().Mult(x, y); }
+
   void MultTranspose(const VecType &x, VecType &y) const override
   {
     GetFinestOperator().MultTranspose(x, y);
+  }
+
+  void AddMult(const VecType &x, VecType &y, const ScalarType a = 1.0) const override
+  {
+    GetFinestOperator().AddMult(x, y, a);
+  }
+
+  void AddMultTranspose(const VecType &x, VecType &y,
+                        const ScalarType a = 1.0) const override
+  {
+    GetFinestOperator().AddMultTranspose(x, y, a);
   }
 };
 
@@ -315,6 +368,20 @@ using ComplexMultigridOperator = BaseMultigridOperator<ComplexOperator>;
 
 namespace linalg
 {
+
+// Calculate the vector norm with respect to an SPD matrix B.
+template <typename VecType>
+double Norml2(MPI_Comm comm, const VecType &x, const Operator &B, VecType &Bx);
+
+// Normalize the vector with respect to an SPD matrix B.
+template <typename VecType>
+inline double Normalize(MPI_Comm comm, VecType &x, const Operator &B, VecType &Bx)
+{
+  double norm = Norml2(comm, x, B, Bx);
+  MFEM_ASSERT(norm > 0.0, "Zero vector norm in normalization!");
+  x *= 1.0 / norm;
+  return norm;
+}
 
 // Estimate operator 2-norm (spectral norm) using power iteration. Assumes the operator is
 // not symmetric or Hermitian unless specified.

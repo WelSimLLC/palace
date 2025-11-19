@@ -3,11 +3,16 @@
   {
     "Type": "Electrostatic",
     "Verbose": 2,
-    "Output": "D:/WelSimLLC/executable28/_palace_examples/spheres/postpro"
+    "Output": "postpro",
+    "OutputFormats":
+    {
+      "Paraview": true,
+      "GridFunction": true
+    }
   },
   "Model":
   {
-    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/spheres/mesh/spheres.msh",
+    "Mesh": "mesh/spheres.msh",
     "L0": 1.0e-2  // cm
   },
   "Domains":
@@ -25,9 +30,14 @@
       [
         {
           "Index": 1,  // On surface of smaller sphere
-          "X": -1.5,
-          "Y": 0.0,
-          "Z": 0.0
+          "Center": [-1.5, 0.0, 0.0]
+        }
+      ],
+      "Energy":
+      [
+        {
+          "Index": 1,
+          "Attributes": [1]
         }
       ]
     }
@@ -51,15 +61,17 @@
     ],
     "Postprocessing":  // Capacitance from charge instead of energy
     {
-      "Capacitance":
+      "SurfaceFlux":
       [
         {
           "Index": 1,
-          "Attributes": [3]  // Sphere A
+          "Attributes": [3],  // Sphere A
+	  "Type": "Electric"
         },
         {
           "Index": 2,
-          "Attributes": [4]  // Sphere B
+          "Attributes": [4],  // Sphere B
+	  "Type": "Electric"
         }
       ]
     }
@@ -67,6 +79,7 @@
   "Solver":
   {
     "Order": 3,
+    "Device": "CPU",
     "Electrostatic":
     {
       "Save": 2
@@ -80,4 +93,3 @@
     }
   }
 }
-

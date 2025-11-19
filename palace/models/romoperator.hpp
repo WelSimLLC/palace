@@ -4,12 +4,10 @@
 #ifndef PALACE_MODELS_ROM_OPERATOR_HPP
 #define PALACE_MODELS_ROM_OPERATOR_HPP
 
+#include <complex>
 #include <memory>
-#include <random>
-#include <set>
 #include <vector>
 #include <Eigen/Dense>
-#include "linalg/hcurl.hpp"
 #include "linalg/ksp.hpp"
 #include "linalg/operator.hpp"
 #include "linalg/vector.hpp"
@@ -20,6 +18,30 @@ namespace palace
 class IoData;
 class SpaceOperator;
 
+// Class for handling minimal-rational interpolation of solutions in frequency space. Used
+// as an error indicator and for selecting the next frequency sample points in PROM
+// construction. Each excitation gets a separate MRI, so sample frequencies are not shared.
+class MinimalRationalInterpolation
+{
+private:
+  // (Complex-valued) upper-trianglar matrix R from orthogonalization of the HDM samples.
+  // Minimal rational interpolant (MRI) defined by the vector q of interpolation weights and
+  // support points z is used as an error indicator.
+  std::vector<ComplexVector> Q;
+  std::size_t dim_Q = 0;
+  Eigen::MatrixXcd R;
+  Eigen::VectorXcd q;
+  std::vector<double> z;
+
+public:
+  MinimalRationalInterpolation(int max_size);
+  void AddSolutionSample(double omega, const ComplexVector &u,
+                         const SpaceOperator &space_op, Orthogonalization orthog_type);
+  std::vector<double> FindMaxError(int N) const;
+
+  const auto &GetSamplePoints() const { return z; }
+};
+
 //
 // A class handling projection-based reduced order model (PROM) construction and use for
 // adaptive fast frequency sweeps.
@@ -28,69 +50,76 @@ class RomOperator
 {
 private:
   // Reference to HDM discretization (not owned).
-  SpaceOperator &spaceop;
+  SpaceOperator &space_op;
+
+  // Used for constructing & reuse of RHS1.
+  int excitation_idx_cache = 0;
 
   // HDM system matrices and excitation RHS.
   std::unique_ptr<ComplexOperator> K, M, C, A2;
-  ComplexVector RHS1, RHS2;
-  bool has_A2, has_RHS2;
-
-  // Working storage for HDM vectors.
-  ComplexVector r, w, z;
+  ComplexVector RHS1, RHS2, r;
+  // Defaults: will be toggled by SetExcitationIndex & SolveHDM.
+  bool has_A2 = true;
+  bool has_RHS1 = true;
+  bool has_RHS2 = true;
 
   // HDM linear system solver and preconditioner.
   std::unique_ptr<ComplexKspSolver> ksp;
 
-  // Linear solver for inner product solves for error metric.
-  std::unique_ptr<WeightedHCurlNormSolver> kspKM;
-
   // PROM matrices and vectors.
   Eigen::MatrixXcd Kr, Mr, Cr, Ar;
-  Eigen::VectorXcd RHS1r, RHSr;
+  Eigen::VectorXcd RHS1r;
+  Eigen::VectorXcd RHSr;
 
   // PROM reduced-order basis (real-valued) and active dimension.
   std::vector<Vector> V;
-  int dim_V;
-  bool orthog_mgs;
+  std::size_t dim_V = 0;
+  Orthogonalization orthog_type;
 
-  // Data structures for parameter domain sampling.
-  std::set<double> PS, P_m_PS;
-  std::default_random_engine engine;
+  // MRIs: one for each excitation index.
+  std::map<int, MinimalRationalInterpolation> mri;
 
 public:
-  RomOperator(const IoData &iodata, SpaceOperator &sp);
+  RomOperator(const IoData &iodata, SpaceOperator &space_op, int max_size_per_excitation);
 
   // Return the HDM linear solver.
   const ComplexKspSolver &GetLinearSolver() const { return *ksp; }
 
   // Return PROM dimension.
-  int GetReducedDimension() const { return dim_V; }
+  auto GetReducedDimension() const { return dim_V; }
 
   // Return set of sampled parameter points for basis construction.
-  const std::set<double> &GetSampleFrequencies() const { return PS; }
+  const auto &GetSamplePoints(int excitation_idx) const
+  {
+    return mri.at(excitation_idx).GetSamplePoints();
+  }
 
-  // Initialize the parameter domain P = {ω_L, ω_L + δ, ..., ω_R}. Also sets the maximum
-  // number of sample points for the PROM construction.
-  void Initialize(double start, double delta, int num_steps, int max_dim);
+  // Set excitation index to build corresponding RHS vector (linear in frequency part).
+  void SetExcitationIndex(int excitation_idx);
 
   // Assemble and solve the HDM at the specified frequency.
-  void SolveHDM(double omega, ComplexVector &e);
+  void SolveHDM(int excitation_idx, double omega, ComplexVector &u);
 
-  // Add the solution vector to the reduced-order basis and update the PROM.
-  void AddHDMSample(double omega, ComplexVector &e);
+  // Add field configuration to the reduced-order basis and update the PROM.
+  void UpdatePROM(const ComplexVector &u);
+
+  // Add solution u to the minimal-rational interpolation for error estimation. MRI are
+  // separated by excitation index.
+  void UpdateMRI(int excitation_idx, double omega, const ComplexVector &u);
 
   // Assemble and solve the PROM at the specified frequency, expanding the solution back
-  // into the high-dimensional solution space.
-  void AssemblePROM(double omega);
-  void SolvePROM(ComplexVector &e);
+  // into the high-dimensional space.
+  void SolvePROM(int excitation_idx, double omega, ComplexVector &u);
 
-  // Compute the error metric for the PROM at the specified frequency.
-  double ComputeError(double omega);
+  // Compute the location(s) of the maximum error in the range of the previously sampled
+  // parameter points.
+  std::vector<double> FindMaxError(int excitation_idx, int N = 1) const
+  {
+    return mri.at(excitation_idx).FindMaxError(N);
+  }
 
-  // Compute the maximum error over a randomly sampled set of candidate points. Returns the
-  // maximum error and its correcponding frequency, as well as the number of candidate
-  // points used (if fewer than those availble in the unsampled parameter domain).
-  double ComputeMaxError(int num_cand, double &omega_star);
+  // Compute eigenvalue estimates for the current PROM system.
+  std::vector<std::complex<double>> ComputeEigenvalueEstimates() const;
 };
 
 }  // namespace palace

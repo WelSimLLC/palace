@@ -14,8 +14,8 @@ set(GSLIB_OPTIONS
   "MPI=1"
 )
 
-set(GSLIB_CFLAGS ${CMAKE_C_FLAGS})
-set(GSLIB_LDFLAGS)
+set(GSLIB_CFLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${BUILD_TYPE_UPPER}}")
+set(GSLIB_LDFLAGS ${CMAKE_EXE_LINKER_FLAGS})
 
 # GSLIB will add -fPIC as necessary
 if(BUILD_SHARED_LIBS)
@@ -48,7 +48,7 @@ list(APPEND GSLIB_OPTIONS
   "BLAS=0"
 )
 
-# Configure BLAS dependency
+# # Configure BLAS dependency
 # if(NOT "${BLAS_LAPACK_LIBRARIES}" STREQUAL "")
 #   foreach(INCLUDE_DIR IN LISTS BLAS_LAPACK_INCLUDE_DIRS)
 #     set(GSLIB_CFLAGS "${GSLIB_CFLAGS} -I${INCLUDE_DIR}")
@@ -79,11 +79,6 @@ list(APPEND GSLIB_OPTIONS
 string(REPLACE ";" "; " GSLIB_OPTIONS_PRINT "${GSLIB_OPTIONS}")
 message(STATUS "GSLIB_OPTIONS: ${GSLIB_OPTIONS_PRINT}")
 
-# Fix build
-set(GSLIB_PATCH_FILES
-  "${CMAKE_SOURCE_DIR}/extern/patch/gslib/patch_build.diff"
-)
-
 include(ExternalProject)
 ExternalProject_Add(gslib
   DEPENDS           ${GSLIB_DEPENDENCIES}
@@ -94,7 +89,6 @@ ExternalProject_Add(gslib
   PREFIX            ${CMAKE_BINARY_DIR}/extern/gslib-cmake
   BUILD_IN_SOURCE   TRUE
   UPDATE_COMMAND    ""
-  PATCH_COMMAND     git apply "${GSLIB_PATCH_FILES}"
   CONFIGURE_COMMAND ""
   BUILD_COMMAND     ""
   INSTALL_COMMAND   ${CMAKE_MAKE_PROGRAM} ${GSLIB_OPTIONS} install

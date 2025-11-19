@@ -8,24 +8,16 @@
 #include <vector>
 #include "drivers/basesolver.hpp"
 #include "linalg/vector.hpp"
-
-namespace mfem
-{
-
-class DenseMatrix;
-class ParMesh;
-
-}  // namespace mfem
+#include "utils/configfile.hpp"
 
 namespace palace
 {
 
-class CurlCurlOperator;
 class ErrorIndicator;
-class IoData;
+class Mesh;
+template <ProblemType>
 class PostOperator;
 class SurfaceCurrentOperator;
-class Timer;
 
 //
 // Driver class for magnetostatic simulations.
@@ -33,15 +25,13 @@ class Timer;
 class MagnetostaticSolver : public BaseSolver
 {
 private:
-  ErrorIndicator Postprocess(CurlCurlOperator &curlcurlop, PostOperator &postop,
-                             const std::vector<Vector> &A) const;
-
-  void PostprocessTerminals(const SurfaceCurrentOperator &surf_j_op,
-                            const mfem::DenseMatrix &M, const mfem::DenseMatrix &Minv,
-                            const mfem::DenseMatrix &Mm) const;
+  void PostprocessTerminals(PostOperator<ProblemType::MAGNETOSTATIC> &post_op,
+                            const SurfaceCurrentOperator &surf_j_op,
+                            const std::vector<Vector> &A,
+                            const std::vector<double> &I_inc) const;
 
   std::pair<ErrorIndicator, long long int>
-  Solve(const std::vector<std::unique_ptr<mfem::ParMesh>> &mesh) const override;
+  Solve(const std::vector<std::unique_ptr<Mesh>> &mesh) const override;
 
 public:
   using BaseSolver::BaseSolver;

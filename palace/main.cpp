@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-#include <iostream>
+#include <thread>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -14,15 +14,20 @@
 #include "drivers/magnetostaticsolver.hpp"
 #include "drivers/transientsolver.hpp"
 #include "fem/errorindicator.hpp"
-#include "fem/libceed/utils.hpp"
+#include "fem/libceed/ceed.hpp"
+#include "fem/mesh.hpp"
+#include "linalg/hypre.hpp"
 #include "linalg/slepc.hpp"
 #include "utils/communication.hpp"
+#include "utils/device.hpp"
 #include "utils/geodata.hpp"
 #include "utils/iodata.hpp"
+#include "utils/omp.hpp"
+#include "utils/outputdir.hpp"
 #include "utils/timer.hpp"
 
-#if defined(MFEM_USE_OPENMP)
-#include <omp.h>
+#if defined(MFEM_USE_STRUMPACK)
+#include <StrumpackConfig.hpp>
 #endif
 
 using namespace palace;
@@ -47,75 +52,55 @@ static const char *GetPalaceCeedJitSourceDir()
   return path;
 }
 
-static int ConfigureOmp()
+static std::string ConfigureDevice(Device device)
 {
-#if defined(MFEM_USE_OPENMP)
-  int nt;
-  const char *env = std::getenv("OMP_NUM_THREADS");
-  if (env)
-  {
-    std::sscanf(env, "%d", &nt);
-  }
-  else
-  {
-    nt = 1;
-    omp_set_num_threads(nt);
-  }
-  omp_set_dynamic(0);
-  return nt;
-#else
-  return 0;
-#endif
-}
-
-static int GetDeviceId(MPI_Comm comm)
-{
-  // Assign devices round-robin over MPI ranks if GPU support is enabled.
-#if defined(MFEM_USE_CUDA) || defined(MFEM_USE_HIP)
-  MPI_Comm node_comm;
-  MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, Mpi::Rank(comm), MPI_INFO_NULL,
-                      &node_comm);
-  int node_size = Mpi::Rank(node_comm);
-  MPI_Comm_free(&node_comm);
-  return node_size % mfem::Device::GetNumGPU();
-#else
-  return 0;
-#endif
-}
-
-static std::string ConfigureDeviceAndBackend(config::SolverData::Device device,
-                                             const std::string &ceed_backend)
-{
-  // Configure
-  std::string device_str, default_ceed_backend;
+  std::string device_str;
   switch (device)
   {
-    case config::SolverData::Device::CPU:
+    case Device::CPU:
       device_str = "cpu";
-      default_ceed_backend = "/cpu/self";
       break;
-    case config::SolverData::Device::GPU:
+    case Device::GPU:
 #if defined(MFEM_USE_CUDA)
       device_str = "cuda";
-      default_ceed_backend = "/gpu/cuda/magma";
 #elif defined(MFEM_USE_HIP)
       device_str = "hip";
-      default_ceed_backend = "/gpu/hip/magma";
 #else
-      MFEM_ABORT(
-          "Palace must be built with either CUDA or HIP support for GPU device usage!");
+      Mpi::Warning("Palace must be built with either CUDA or HIP support for GPU device "
+                   "usage, reverting to CPU!\n");
+      device_str = "cpu";
 #endif
       break;
-    case config::SolverData::Device::DEBUG:
+    case Device::DEBUG:
       device_str = "cpu,debug";
-      default_ceed_backend = "/cpu/self/ref";
       break;
   }
 #if defined(MFEM_USE_OPENMP)
   device_str += ",omp";
 #endif
+  return device_str;
+}
 
-  // Initialize libCEED.
+static void ConfigureCeedBackend(const std::string &ceed_backend)
+{
+  // Initialize libCEED (only after MFEM device is configured).
+  std::string default_ceed_backend;
+  if (mfem::Device::Allows(mfem::Backend::CUDA_MASK))
+  {
+    default_ceed_backend = "/gpu/cuda/magma";
+  }
+  else if (mfem::Device::Allows(mfem::Backend::HIP_MASK))
+  {
+    default_ceed_backend = "/gpu/hip/magma";
+  }
+  else if (mfem::Device::Allows(mfem::Backend::DEBUG_DEVICE))
+  {
+    default_ceed_backend = "/cpu/self/ref/serial";
+  }
+  else
+  {
+    default_ceed_backend = "/cpu/self";
+  }
   const std::string &backend =
       !ceed_backend.empty() ? ceed_backend.c_str() : default_ceed_backend.c_str();
   ceed::Initialize(backend.c_str(), GetPalaceCeedJitSourceDir());
@@ -125,11 +110,9 @@ static std::string ConfigureDeviceAndBackend(config::SolverData::Device device,
   if (backend.compare(0, backend.length(), ceed_resource, 0, backend.length()))
   {
     Mpi::Warning(
-        "libCEED is not using the requested backend (requested \"{}\", got \"{}\")!\n",
+        "libCEED is not using the requested backend!\nRequested \"{}\", got \"{}\"!\n",
         backend, ceed_resource);
   }
-
-  return device_str;
 }
 
 static void PrintPalaceBanner(MPI_Comm comm)
@@ -141,7 +124,7 @@ static void PrintPalaceBanner(MPI_Comm comm)
                    "  /__/     \\___,__/__/\\___,__/\\_____\\_____/\n\n");
 }
 
-static void PrintPalaceInfo(MPI_Comm comm, int np, int nt, mfem::Device &device)
+static void PrintPalaceInfo(MPI_Comm comm, int np, int nt, int ngpu, mfem::Device &device)
 {
   if (std::strcmp(GetPalaceGitTag(), "UNKNOWN"))
   {
@@ -153,15 +136,14 @@ static void PrintPalaceInfo(MPI_Comm comm, int np, int nt, mfem::Device &device)
     Mpi::Print(comm, ", {:d} OpenMP thread{}", nt, (nt > 1) ? "s" : "");
   }
 #if defined(MFEM_USE_CUDA) || defined(MFEM_USE_HIP)
-  int ngpu = mfem::Device::GetNumGPU();
 #if defined(MFEM_USE_CUDA)
   const char *device_name = "CUDA";
 #else
   const char *device_name = "HIP";
 #endif
-      Mpi::Print(comm, "\n{:d} detected {} device{}{}", ngpu, device_name,
-                 (ngpu > 1) ? "s" : "",
-                 mfem::Device::GetGPUAwareMPI() ? " (MPI is GPU aware)" : "");
+  Mpi::Print(comm, "\nDetected {:d} {} device{}{}", ngpu, device_name,
+             (ngpu != 1) ? "s" : "",
+             mfem::Device::GetGPUAwareMPI() ? " (MPI is GPU aware)" : "");
 #endif
   std::ostringstream resource(std::stringstream::out);
   resource << "\n";
@@ -173,15 +155,19 @@ static void PrintPalaceInfo(MPI_Comm comm, int np, int nt, mfem::Device &device)
 
 int main(int argc, char *argv[])
 {
-  // Initialize the timer.
-  BlockTimer bt(Timer::INIT);
-
   // Initialize MPI.
+#if defined(MFEM_USE_STRUMPACK) && \
+    (defined(STRUMPACK_USE_PTSCOTCH) || defined(STRUMPACK_USE_SLATE_SCALAPACK))
+  Mpi::default_thread_required = MPI_THREAD_MULTIPLE;
+#endif
   Mpi::Init(argc, argv);
   MPI_Comm world_comm = Mpi::World();
   bool world_root = Mpi::Root(world_comm);
   int world_size = Mpi::Size(world_comm);
   Mpi::Print(world_comm, "\n");
+
+  // Initialize the timer.
+  BlockTimer bt(Timer::INIT);
 
   // Parse command-line options.
   std::vector<std::string_view> argv_sv(argv, argv + argc);
@@ -192,6 +178,7 @@ int main(int argc, char *argv[])
                "Usage: {} [OPTIONS] CONFIG_FILE\n\n"
                "Options:\n"
                "  -h, --help           Show this help message and exit\n"
+               "  --version            Show version information and exit\n"
                "  -dry-run, --dry-run  Parse configuration file for errors and exit\n\n",
                executable_path.substr(executable_path.find_last_of('/') + 1));
   };
@@ -201,6 +188,11 @@ int main(int argc, char *argv[])
     if ((argv_i == "-h") || (argv_i == "--help"))
     {
       Help();
+      return 0;
+    }
+    if (argv_i == "--version")
+    {
+      Mpi::Print(world_comm, "Palace version: {}\n", GetPalaceGitTag());
       return 0;
     }
     if ((argv_i == "-dry-run") || (argv_i == "--dry-run"))
@@ -231,18 +223,20 @@ int main(int argc, char *argv[])
   // Parse configuration file.
   PrintPalaceBanner(world_comm);
   IoData iodata(argv[1], false);
+  MakeOutputFolder(iodata, world_comm);
 
+  BlockTimer bt1(Timer::INIT);
   // Initialize the MFEM device and configure libCEED backend.
-  int omp_threads = ConfigureOmp(), device_id = GetDeviceId(world_comm);
-  mfem::Device device(
-      ConfigureDeviceAndBackend(iodata.solver.device, iodata.solver.ceed_backend),
-      device_id);
-#if defined(HYPRE_WITH_GPU_AWARE_MPI)
+  int omp_threads = utils::ConfigureOmp(), ngpu = utils::GetDeviceCount();
+  mfem::Device device(ConfigureDevice(iodata.solver.device),
+                      utils::GetDeviceId(world_comm, ngpu));
+  ConfigureCeedBackend(iodata.solver.ceed_backend);
+#if defined(PALACE_WITH_GPU_AWARE_MPI)
   device.SetGPUAwareMPI(true);
 #endif
 
   // Initialize Hypre and, optionally, SLEPc/PETSc.
-  mfem::Hypre::Init();
+  hypre::Initialize();
 #if defined(PALACE_WITH_SLEPC)
   slepc::Initialize(argc, argv, nullptr, nullptr);
   if (PETSC_COMM_WORLD != world_comm)
@@ -253,24 +247,24 @@ int main(int argc, char *argv[])
 #endif
 
   // Initialize the problem driver.
-  PrintPalaceInfo(world_comm, world_size, omp_threads, device);
+  PrintPalaceInfo(world_comm, world_size, omp_threads, ngpu, device);
   const auto solver = [&]() -> std::unique_ptr<BaseSolver>
   {
     switch (iodata.problem.type)
     {
-      case config::ProblemData::Type::DRIVEN:
+      case ProblemType::DRIVEN:
         return std::make_unique<DrivenSolver>(iodata, world_root, world_size, omp_threads,
                                               GetPalaceGitTag());
-      case config::ProblemData::Type::EIGENMODE:
+      case ProblemType::EIGENMODE:
         return std::make_unique<EigenSolver>(iodata, world_root, world_size, omp_threads,
                                              GetPalaceGitTag());
-      case config::ProblemData::Type::ELECTROSTATIC:
+      case ProblemType::ELECTROSTATIC:
         return std::make_unique<ElectrostaticSolver>(iodata, world_root, world_size,
                                                      omp_threads, GetPalaceGitTag());
-      case config::ProblemData::Type::MAGNETOSTATIC:
+      case ProblemType::MAGNETOSTATIC:
         return std::make_unique<MagnetostaticSolver>(iodata, world_root, world_size,
                                                      omp_threads, GetPalaceGitTag());
-      case config::ProblemData::Type::TRANSIENT:
+      case ProblemType::TRANSIENT:
         return std::make_unique<TransientSolver>(iodata, world_root, world_size,
                                                  omp_threads, GetPalaceGitTag());
     }
@@ -279,11 +273,20 @@ int main(int argc, char *argv[])
 
   // Read the mesh from file, refine, partition, and distribute it. Then nondimensionalize
   // it and the input parameters.
-  std::vector<std::unique_ptr<mfem::ParMesh>> mesh;
-  mesh.push_back(mesh::ReadMesh(world_comm, iodata, false, true, true, false));
-  iodata.NondimensionalizeInputs(*mesh[0]);
-  mesh::RefineMesh(iodata, mesh);
+  std::vector<std::unique_ptr<Mesh>> mesh;
+  {
+    std::vector<std::unique_ptr<mfem::ParMesh>> mfem_mesh;
+    mfem_mesh.push_back(mesh::ReadMesh(iodata, world_comm));
+    iodata.NondimensionalizeInputs(*mfem_mesh[0]);
+    mesh::RefineMesh(iodata, mfem_mesh);
+    for (auto &m : mfem_mesh)
+    {
+      mesh.push_back(std::make_unique<Mesh>(std::move(m)));
+    }
+  }
 
+  //assert(0);
+  //std::this_thread::sleep_for(std::chrono::seconds(5));
   // Run the problem driver.
   solver->SolveEstimateMarkRefine(mesh);
 

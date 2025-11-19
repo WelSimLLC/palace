@@ -8,6 +8,8 @@
   {
     "Order": { "type": "integer", "minimum": 1 },
     "PartialAssemblyOrder": { "type": "integer", "minimum": 1 },
+    "QuadratureOrderJacobian": { "type": "boolean" },
+    "QuadratureOrderExtra": { "type": "integer" },
     "Device": { "type": "string", "enum": ["CPU", "GPU", "Debug"] },
     "Backend": { "type": "string" },
     "Eigenmode":
@@ -21,37 +23,83 @@
         "Tol": { "type": "number", "minimum": 0.0 },
         "MaxIts": { "type": "integer", "exclusiveMinimum": 0 },
         "MaxSize": { "type": "integer", "exclusiveMinimum": 0 },
-        "N": { "type": "integer" },
+        "N": { "type": "integer", "exclusiveMinimum": 0 },
         "Save": { "type": "integer" },
         "Type": { "type": "string" },
         "PEPLinear": { "type": "boolean" },
-        "ContourNPoints": { "type": "integer" },
-        "ContourTargetUpper": { "type": "number" },
-        "ContourAspectRatio": { "type": "number" },
-        "ContourMoments": { "type": "integer" },
         "Scaling": { "type": "boolean" },
         "StartVector": { "type": "boolean" },
         "StartVectorConstant": { "type": "boolean" },
-        "MassOrthogonal": { "type": "boolean" }
+        "MassOrthogonal": { "type": "boolean" },
+        "NonlinearType": { "type": "string" },
+        "RefineNonlinear": { "type": "boolean" },
+        "LinearTol": { "type": "number", "minimum": 0.0 },
+        "TargetUpper": { "type": "number" },
+        "PreconditionerLag": { "type" : "integer", "minimum": 0 },
+        "PreconditionerLagTol": { "type": "number", "minimum": 0.0 },
+        "MaxRestart": { "type" : "integer", "minimum": 0 }
       }
     },
     "Driven":
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["MinFreq", "MaxFreq", "FreqStep"],
       "properties":
       {
         "MinFreq": { "type": "number" },
         "MaxFreq": { "type": "number" },
         "FreqStep": { "type": "number" },
         "SaveStep": { "type": "integer" },
-        "SaveOnlyPorts": { "type": "boolean" },
+        "Samples": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "Type": { "const": "Point" },
+                  "Freq": { "type": "array", "items": { "type": "number" } },
+                  "SaveStep": { "type": "integer" },
+                  "AddToPROM": { "type": "bool" }
+                },
+                "required": ["Freq"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "Type": { "const": "Linear" },
+                  "MinFreq": { "type": "number", "minimum": 0.0 },
+                  "MaxFreq": { "type": "number", "minimum": 0.0 },
+                  "FreqStep": { "type": "number", "minimum": 0.0 },
+                  "NSample": { "type": "integer", "minimum": 0 },
+                  "SaveStep": { "type": "integer" },
+                  "AddToPROM": { "type": "bool" }
+                },
+                "required": ["MinFreq", "MaxFreq"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "Type": { "const": "Log" },
+                  "MinFreq": { "type": "number", "exclusiveMinimum": 0.0 },
+                  "MaxFreq": { "type": "number", "exclusiveMinimum": 0.0 },
+                  "NSample": { "type": "integer", "minimum": 1 },
+                  "SaveStep": { "type": "integer" },
+                  "AddToPROM": { "type": "bool" }
+                },
+                "required": ["Type", "MinFreq", "MaxFreq", "NSample"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "Save": { "type": "array", "additionalItems": false, "items": { "type": "number" }},
+        "Restart": { "type": "integer", "exclusiveMinimum": 0 },
         "AdaptiveTol": { "type": "number", "minimum": 0.0 },
         "AdaptiveMaxSamples": { "type": "number", "exclusiveMinimum": 0 },
-        "AdaptiveMaxCandidates": { "type": "integer", "exclusiveMinimum": 0 },
-        "AdaptiveAPosterioriError": { "type": "bool" },
-        "Restart": { "type": "integer", "exclusiveMinimum": 0 }
+        "AdaptiveConvergenceMemory": { "type": "integer", "exclusiveMinimum": 0 }
       }
     },
     "Transient":
@@ -68,7 +116,9 @@
         "MaxTime": { "type": "number" },
         "TimeStep": { "type": "number" },
         "SaveStep": { "type": "integer" },
-        "SaveOnlyPorts": { "type": "boolean" }
+        "Order": {"type": "integer", "minimum": 2, "maximum": 5},
+        "RelTol": {"type": "number", "exclusiveMinimum": 0.0},
+        "AbsTol": {"type": "number", "exclusiveMinimum": 0.0}
       }
     },
     "Electrostatic":
@@ -104,8 +154,9 @@
         "MaxIts": { "type": "integer", "exclusiveMinimum": 0 },
         "MaxSize": { "type": "integer", "exclusiveMinimum": 0 },
         "InitialGuess": { "type": "boolean" },
-        "MGMaxLevels": { "type": "int", "minimum": 1 },
+        "MGMaxLevels": { "type": "integer", "minimum": 1 },
         "MGCoarsenType": { "type": "string" },
+        "MGUseMesh": { "type": "boolean" },
         "MGAuxiliarySmoother": { "type": "boolean" },
         "MGCycleIts": { "type": "integer", "exclusiveMinimum": 0 },
         "MGSmoothIts": { "type": "integer", "exclusiveMinimum": 0 },
@@ -115,18 +166,24 @@
         "MGSmoothChebyshev4th": { "type": "boolean" },
         "PCMatReal": { "type": "boolean" },
         "PCMatShifted": { "type": "boolean" },
+        "ComplexCoarseSolve": {"type": "boolean"},
+        "DropSmallEntries": {"type": "boolean"},
+        "ReorderingReuse": {"type": "boolean"},
         "PCSide": { "type": "string" },
         "ColumnOrdering": { "type": "string" },
         "STRUMPACKCompressionType": { "type": "string" },
         "STRUMPACKCompressionTol": { "type": "number", "minimum": 0.0 },
         "STRUMPACKLossyPrecision": { "type": "integer", "minimum": 0 },
         "STRUMPACKButterflyLevels": { "type": "integer", "minimum": 0 },
-        "SuperLU3D": { "type": "boolean" },
-        "AMSVector": { "type": "boolean" },
+        "SuperLU3DCommunicator": { "type": "boolean" },
+        "AMSVectorInterpolation": { "type": "boolean" },
+        "AMSSingularOperator": { "type": "boolean" },
+        "AMGAggressiveCoarsening": { "type": "boolean" },
         "DivFreeTol": { "type": "number", "minimum": 0.0 },
         "DivFreeMaxIts": { "type": "integer", "minimum": 0 },
         "EstimatorTol": { "type": "number", "minimum": 0.0 },
         "EstimatorMaxIts": { "type": "integer", "minimum": 0 },
+        "EstimatorMG": { "type": "boolean" },
         "GSOrthogonalization": { "type": "string" }
       }
     }

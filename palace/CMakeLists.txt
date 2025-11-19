@@ -8,6 +8,8 @@
 # CMake 3.21 was released in Jul. 2021 (required for HIP support)
 cmake_minimum_required(VERSION 3.21)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Prohibit in-source builds
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(FATAL_ERROR "In-source builds are prohibited")
@@ -19,16 +21,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Initialize the project
-project(palace LANGUAGES CXX VERSION 0.11.2)
+project(palace LANGUAGES CXX VERSION 0.14.0)
 
 # Define build settings and defaults
 set(PALACE_WITH_OPENMP OFF CACHE BOOL "Use OpenMP for shared-memory parallelism")
+set(PALACE_WITH_CUDA OFF CACHE BOOL "Use CUDA for NVIDIA GPU support")
+set(PALACE_WITH_HIP OFF CACHE BOOL "Use HIP for AMD or NVIDIA GPU support")
 
 set(PALACE_WITH_SLEPC ON CACHE BOOL "Build with SLEPc eigenvalue solver")
 set(PALACE_WITH_ARPACK OFF CACHE BOOL "Build with ARPACK eigenvalue solver")
 
 set(ANALYZE_SOURCES_CLANG_TIDY OFF CACHE BOOL "Run static analysis checks using clang-tidy")
 set(ANALYZE_SOURCES_CPPCHECK OFF CACHE BOOL "Run static analysis checks using cppcheck")
+
+set(PALACE_BUILD_WITH_COVERAGE OFF CACHE BOOL "Compile Palace with coverage flags (source-based for LLVM; gcov for GCC)")
 
 # Help find third-party dependencies
 set(MFEM_DIR "" CACHE STRING
@@ -52,11 +58,51 @@ if(PALACE_WITH_ARPACK)
   enable_language(Fortran)
 endif()
 
+# Enable CUDA/HIP if required
+if(PALACE_WITH_CUDA AND PALACE_WITH_HIP)
+  message(FATAL_ERROR "PALACE_WITH_CUDA is not compatible with PALACE_WITH_HIP")
+endif()
+if(PALACE_WITH_CUDA)
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-extended-lambda")
+elseif(PALACE_WITH_HIP)
+  enable_language(HIP)
+endif()
+
 # Set a default build type if none was provided
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting CMAKE_BUILD_TYPE to 'Release' as none was specified")
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING
     "Specifies the build type ('Debug' or 'Release', for example)" FORCE
+  )
+endif()
+
+# Centralize Error handling
+add_library(common_warnings INTERFACE)
+target_compile_options(
+  common_warnings
+  INTERFACE -Wall
+            -Wpedantic
+            -Wno-deprecated-declarations
+)
+
+if(PALACE_BUILD_WITH_COVERAGE)
+  add_library(coverage_flags INTERFACE)
+  target_compile_options(
+    coverage_flags
+    INTERFACE 
+        $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-fprofile-instr-generate>
+        $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-fcoverage-mapping>
+        $<$<CXX_COMPILER_ID:GNU>:--coverage>
+        $<$<CXX_COMPILER_ID:GNU>:-fprofile-abs-path>
+  )
+  target_link_options(
+    coverage_flags
+    INTERFACE 
+        $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-fprofile-instr-generate>
+        $<$<CXX_COMPILER_ID:AppleClang,Clang,IntelLLVM>:-fcoverage-mapping>
+        $<$<CXX_COMPILER_ID:GNU>:--coverage>
   )
 endif()
 
@@ -71,6 +117,9 @@ if(PALACE_WITH_OPENMP)
   find_package(OpenMP REQUIRED)
 endif()
 
+# Find LAPACK
+find_package(LAPACK REQUIRED)
+
 # Find nlohmann/json
 find_package(nlohmann_json REQUIRED CONFIG)
 message(STATUS "Found nlohmann/json: ${nlohmann_json_VERSION} in ${nlohmann_json_DIR}")
@@ -78,6 +127,10 @@ message(STATUS "Found nlohmann/json: ${nlohmann_json_VERSION} in ${nlohmann_json
 # Find fmt
 find_package(fmt REQUIRED CONFIG)
 message(STATUS "Found fmt: ${fmt_VERSION} in ${fmt_DIR}")
+
+# Find scn
+find_package(scn REQUIRED CONFIG)
+message(STATUS "Found scn: ${scn_VERSION} in ${scn_DIR}")
 
 # Find Eigen
 find_package(Eigen3 REQUIRED CONFIG)
@@ -183,6 +236,39 @@ set_target_properties(${LIB_TARGET_NAME}
   PROPERTIES OUTPUT_NAME "${TARGET_NAME}"
 )
 
+# Handle device source code
+#
+# TARGET_SOURCES_DEVICE defines a list of files that contain device code.
+# We manually specify this list because we cannot use compilers like nvcc for
+# everything, since they tend to be slower and do not support everything we need.
+if(NOT "${TARGET_SOURCES_DEVICE}" STREQUAL "" AND (PALACE_WITH_CUDA OR PALACE_WITH_HIP))
+  if(PALACE_WITH_CUDA)
+    set(LANGUAGE_PROPERTY CUDA)
+  elseif(PALACE_WITH_HIP)
+    set(LANGUAGE_PROPERTY HIP)
+  endif()
+  set(COMPILE_OPTIONS_PROPERTY "-Wno-pedantic")
+  if(PALACE_WITH_OPENMP)
+    set(COMPILE_OPTIONS_PROPERTY "${COMPILE_OPTIONS_PROPERTY} ${OpenMP_CXX_FLAGS}")
+  endif()
+  set_property(
+    SOURCE ${TARGET_SOURCES_DEVICE}
+    PROPERTY LANGUAGE ${LANGUAGE_PROPERTY}
+  )
+  set_property(
+    SOURCE ${TARGET_SOURCES_DEVICE}
+    APPEND PROPERTY COMPILE_OPTIONS "${COMPILE_OPTIONS_PROPERTY}"
+  )
+endif()
+
+if(PALACE_WITH_CUDA)
+  if (BUILD_SHARED_LIBS)
+    target_link_libraries(${LIB_TARGET_NAME} PUBLIC CUDA::cudart)
+  else()
+    target_link_libraries(${LIB_TARGET_NAME} PUBLIC CUDA::cudart_static)
+  endif()
+endif()
+
 # Add JIT source file path definition for libCEED
 set_property(
   SOURCE ${CMAKE_SOURCE_DIR}/main.cpp
@@ -202,15 +288,6 @@ endif()
 
 # Check C++ compiler support for constexpr std::sqrt and std::filesystem
 include(CheckCompilerFeatureSupport)
-if(NOT DEFINED CONSTEXPR_SQRT_SUPPORT_CACHE)
-  check_constexpr_sqrt_support(CONSTEXPR_SQRT_SUPPORT)
-  set(CONSTEXPR_SQRT_SUPPORT_CACHE ${CONSTEXPR_SQRT_SUPPORT} CACHE INTERNAL "")
-endif()
-if(CONSTEXPR_SQRT_SUPPORT_CACHE)
-  target_compile_definitions(${LIB_TARGET_NAME}
-    PUBLIC PALACE_WITH_CONSTEXPR_SQRT
-  )
-endif()
 if(NOT DEFINED STD_FS_LIBRARIES_CACHE)
   check_std_fs_support(STD_FS_SUPPORT STD_FS_LIBRARIES)
   if(NOT STD_FS_SUPPORT)
@@ -247,8 +324,24 @@ if(PALACE_WITH_OPENMP)
   )
 endif()
 target_link_libraries(${LIB_TARGET_NAME}
-  PUBLIC mfem ${LIBCEED_TARGET} nlohmann_json::nlohmann_json fmt::fmt Eigen3::Eigen MPI::MPI_CXX
+  PUBLIC mfem ${LIBCEED_TARGET} nlohmann_json::nlohmann_json fmt::fmt scn::scn
+         Eigen3::Eigen LAPACK::LAPACK MPI::MPI_CXX
 )
+target_link_libraries(
+  ${LIB_TARGET_NAME}
+  PRIVATE $<BUILD_INTERFACE:$<$<CONFIG:Debug,RelWithDebInfo>:common_warnings>>
+          $<$<BOOL:${PALACE_BUILD_WITH_COVERAGE}>:coverage_flags>)
+if(PALACE_WITH_GSLIB)
+  target_compile_definitions(${LIB_TARGET_NAME}
+    PUBLIC PALACE_WITH_GSLIB
+  )
+endif()
+if(PALACE_WITH_GPU_AWARE_MPI)
+  target_compile_definitions(${LIB_TARGET_NAME}
+    PUBLIC PALACE_WITH_GPU_AWARE_MPI
+  )
+endif()
+
 
 # Install target and helper scripts
 install(

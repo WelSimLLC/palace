@@ -21,12 +21,6 @@ if(PALACE_WITH_STRUMPACK OR PALACE_WITH_MUMPS)
   include(ExternalScaLAPACK)
 endif()
 
-# Add SLATE (for STRUMPACK with GPU support)
-if(PALACE_WITH_STRUMPACK AND (PALACE_WITH_CUDA OR PALACE_WITH_HIP))
-  message(STATUS "===================== Configuring SLATE dependency =====================")
-  include(ExternalSLATE)
-endif()
-
 # Add MAGMA (for STRUMPACK with GPU support and for libCEED)
 if(PALACE_WITH_MAGMA)
   message(STATUS "===================== Configuring MAGMA dependency =====================")
@@ -75,6 +69,27 @@ include(ExternalJSON)
 message(STATUS "====================== Configuring fmt dependency ======================")
 include(ExternalFmt)
 
+# Add scn
+message(STATUS "====================== Configuring scn dependency ======================")
+include(ExternalScn)
+
 # Add Eigen
 message(STATUS "===================== Configuring Eigen dependency =====================")
 include(ExternalEigen)
+
+# Add SUNDIALS
+if(PALACE_WITH_SUNDIALS)
+  message(STATUS "===================== Configuring SUNDIALS dependency =====================")
+  include(ExternalSUNDIALS)
+endif()
+
+# Add GSLIB
+if(PALACE_WITH_GSLIB)
+  message(STATUS "===================== Configuring GSLIB dependency =====================")
+  include(ExternalGSLIB)
+endif()
+
+# Add libCEED
+message(STATUS "==================== Configuring libCEED dependency ====================")
+include(ExternalLibCEED)
+

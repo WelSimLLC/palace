@@ -13,7 +13,6 @@
 namespace palace
 {
 
-class AuxiliaryFiniteElementSpaceHierarchy;
 class FiniteElementSpaceHierarchy;
 class IoData;
 
@@ -39,9 +38,12 @@ protected:
   // of iterations.
   mutable int ksp_mult, ksp_mult_it;
 
+  // Enable timer contribution for Timer::KSP_PRECONDITIONER.
+  bool use_timer;
+
 public:
-  BaseKspSolver(const IoData &iodata, const FiniteElementSpaceHierarchy &fespaces,
-                const AuxiliaryFiniteElementSpaceHierarchy *aux_fespaces = nullptr);
+  BaseKspSolver(const IoData &iodata, FiniteElementSpaceHierarchy &fespaces,
+                FiniteElementSpaceHierarchy *aux_fespaces = nullptr);
   BaseKspSolver(std::unique_ptr<IterativeSolver<OperType>> &&ksp,
                 std::unique_ptr<Solver<OperType>> &&pc);
 

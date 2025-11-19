@@ -3,7 +3,7 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <ExternalIncludePath>$(MSMPI_INC);.\;$(MSMPI_INC)\x64;$(WELSIM_LIBPACK)\include\palace\mfem;$(WELSIM_LIBPACK)\include\palace\arpack;$(WELSIM_LIBPACK)\include\palace\libCEED;$(WELSIM_LIBPACK)\include\palace;$(WELSIM_LIBPACK)\include\zlib;$(WELSIM_LIBPACK)\include\hypre;$(WELSIM_LIBPACK)\include\petsc;$(WELSIM_LIBPACK)\include\SLEPc;$(WELSIM_LIBPACK)\include\fmt;$(WELSIM_LIBPACK)\include;$(INTEL_MKL)\include;$(WELSIM_LIBPACK)\include\eigen3;$(WELSIM_LIBPACK)\include\mumps;$(CUDA_PATH)\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>$(MSMPI_INC);.\;$(MSMPI_INC)\x64;$(WELSIM_LIBPACK)\include\palace\mfem;$(WELSIM_LIBPACK)\include\zlib;$(WELSIM_LIBPACK)\include\hypre;$(WELSIM_LIBPACK)\include\petsc;$(WELSIM_LIBPACK)\include\SLEPc;$(WELSIM_LIBPACK)\include\fmt;$(WELSIM_LIBPACK)\include\palace;$(WELSIM_LIBPACK)\include\palace\libCEED;$(WELSIM_LIBPACK)\include;$(INTEL_MKL)\include;$(WELSIM_LIBPACK)\include\eigen3;$(WELSIM_LIBPACK)\include\mumps;$(WELSIM_LIBPACK)\include\palace\arpack;$(ExternalIncludePath)</ExternalIncludePath>
     <OutDir>$(Platform)\$(Configuration)\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
@@ -12,7 +12,8 @@
     </PostBuildEvent>
     <ClCompile>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <PreprocessorDefinitions>_UNICODE;UNICODE;CEED_SKIP_VISIBILITY;PALACE_WITH_ARPACK;PALACE_WITH_MUMPS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;CEED_SKIP_VISIBILITY;PALACE_WITH_ARPACK;PALACE_WITH_MUMPS;_CRT_SECURE_NO_WARNINGS;MFEM_USE_MUMPS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup />

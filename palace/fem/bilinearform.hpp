@@ -9,9 +9,13 @@
 #include <mfem.hpp>
 #include "fem/integrator.hpp"
 #include "fem/libceed/operator.hpp"
+#include "linalg/hypre.hpp"
 
 namespace palace
 {
+
+class FiniteElementSpace;
+class FiniteElementSpaceHierarchy;
 
 //
 // This class implements bilinear and mixed bilinear forms based on integrators assembled
@@ -22,53 +26,29 @@ class BilinearForm
 {
 protected:
   // Domain and range finite element spaces.
-  const mfem::ParFiniteElementSpace &trial_fespace, &test_fespace;
+  const FiniteElementSpace &trial_fespace, &test_fespace;
 
   // List of domain and boundary integrators making up the bilinear form.
   std::vector<std::unique_ptr<BilinearFormIntegrator>> domain_integs, boundary_integs;
 
-  // Integration order for quadrature rules is calculated as p_trial + p_test + w + q_extra,
-  // where p_test and p_trial are the test and trial space basis function orders and w is
-  // the geometry order.
-  int q_extra_pk, q_extra_qk;
+  std::unique_ptr<ceed::Operator>
+  PartialAssemble(const FiniteElementSpace &trial_fespace,
+                  const FiniteElementSpace &test_fespace) const;
 
 public:
-  BilinearForm(const mfem::ParFiniteElementSpace &trial_fespace,
-               const mfem::ParFiniteElementSpace &test_fespace, int q_extra_pk,
-               int q_extra_qk)
-    : trial_fespace(trial_fespace), test_fespace(test_fespace), q_extra_pk(q_extra_pk),
-      q_extra_qk(q_extra_qk)
+  // Order above which to use partial assembly vs. full.
+  inline static int pa_order_threshold = 1;
+
+public:
+  BilinearForm(const FiniteElementSpace &trial_fespace,
+               const FiniteElementSpace &test_fespace)
+    : trial_fespace(trial_fespace), test_fespace(test_fespace)
   {
   }
-  BilinearForm(const mfem::ParFiniteElementSpace &trial_fespace,
-               const mfem::ParFiniteElementSpace &test_fespace, int q_extra = 0)
-    : BilinearForm(trial_fespace, test_fespace, q_extra, q_extra)
-  {
-  }
-  BilinearForm(const mfem::ParFiniteElementSpace &fespace, int q_extra_pk, int q_extra_qk)
-    : BilinearForm(fespace, fespace, q_extra_pk, q_extra_qk)
-  {
-  }
-  BilinearForm(const mfem::ParFiniteElementSpace &fespace, int q_extra = 0)
-    : BilinearForm(fespace, fespace, q_extra, q_extra)
-  {
-  }
+  BilinearForm(const FiniteElementSpace &fespace) : BilinearForm(fespace, fespace) {}
 
   const auto &GetTrialSpace() const { return trial_fespace; }
   const auto &GetTestSpace() const { return test_fespace; }
-
-  // MFEM's RT_FECollection actually returns order + 1 for GetOrder() for historical
-  // reasons.
-  auto GetMaxElementOrder() const
-  {
-    const auto &trial_fec = *trial_fespace.FEColl();
-    const auto &test_fec = *test_fespace.FEColl();
-    return std::max(
-        dynamic_cast<const mfem::RT_FECollection *>(&trial_fec) ? trial_fec.GetOrder() - 1
-                                                                : trial_fec.GetOrder(),
-        dynamic_cast<const mfem::RT_FECollection *>(&test_fec) ? test_fec.GetOrder() - 1
-                                                               : test_fec.GetOrder());
-  }
 
   template <typename T, typename... U>
   void AddDomainIntegrator(U &&...args)
@@ -82,27 +62,32 @@ public:
     boundary_integs.push_back(std::make_unique<T>(std::forward<U>(args)...));
   }
 
-  std::unique_ptr<Operator> Assemble(int pa_order_threshold, bool skip_zeros) const
+  void AssembleQuadratureData();
+
+  std::unique_ptr<ceed::Operator> PartialAssemble() const
   {
-    if (GetMaxElementOrder() >= pa_order_threshold)
-    {
-      return Assemble();
-    }
-    else
-    {
-      return FullAssemble(skip_zeros);
-    }
+    return PartialAssemble(GetTrialSpace(), GetTestSpace());
   }
 
-  std::unique_ptr<mfem::SparseMatrix> FullAssemble(bool skip_zeros) const
+  std::unique_ptr<hypre::HypreCSRMatrix> FullAssemble(bool skip_zeros) const
   {
-    return FullAssemble(*Assemble(), skip_zeros);
+    return FullAssemble(*PartialAssemble(), skip_zeros, false);
   }
 
-  std::unique_ptr<ceed::Operator> Assemble() const;
+  static std::unique_ptr<hypre::HypreCSRMatrix> FullAssemble(const ceed::Operator &op,
+                                                             bool skip_zeros)
+  {
+    return FullAssemble(op, skip_zeros, false);
+  }
 
-  static std::unique_ptr<mfem::SparseMatrix> FullAssemble(const ceed::Operator &op,
-                                                          bool skip_zeros);
+  static std::unique_ptr<hypre::HypreCSRMatrix> FullAssemble(const ceed::Operator &op,
+                                                             bool skip_zeros, bool set);
+
+  std::unique_ptr<Operator> Assemble(bool skip_zeros) const;
+
+  std::vector<std::unique_ptr<Operator>>
+  Assemble(const FiniteElementSpaceHierarchy &fespaces, bool skip_zeros,
+           std::size_t l0 = 0) const;
 };
 
 // Discrete linear operators map primal vectors to primal vectors for interpolation between
@@ -110,45 +95,40 @@ public:
 class DiscreteLinearOperator
 {
 private:
-  BilinearForm a;
+  // Domain and range finite element spaces.
+  const FiniteElementSpace &trial_fespace, &test_fespace;
+
+  // List of domain interpolators making up the discrete linear operator.
+  std::vector<std::unique_ptr<DiscreteInterpolator>> domain_interps;
 
 public:
-  DiscreteLinearOperator(const mfem::ParFiniteElementSpace &trial_fespace,
-                         const mfem::ParFiniteElementSpace &test_fespace)
-    : a(trial_fespace, test_fespace)
+  DiscreteLinearOperator(const FiniteElementSpace &trial_fespace,
+                         const FiniteElementSpace &test_fespace)
+    : trial_fespace(trial_fespace), test_fespace(test_fespace)
   {
   }
 
-  const auto &GetTrialSpace() const { return a.GetTrialSpace(); }
-  const auto &GetTestSpace() const { return a.GetTestSpace(); }
+  const auto &GetTrialSpace() const { return trial_fespace; }
+  const auto &GetTestSpace() const { return test_fespace; }
 
   template <typename T, typename... U>
   void AddDomainInterpolator(U &&...args)
   {
-    a.AddDomainIntegrator<T>(std::forward<U>(args)...);
+    domain_interps.push_back(std::make_unique<T>(std::forward<U>(args)...));
   }
 
-  std::unique_ptr<Operator> Assemble(int pa_order_threshold, bool skip_zeros) const
+  std::unique_ptr<ceed::Operator> PartialAssemble() const;
+
+  std::unique_ptr<hypre::HypreCSRMatrix> FullAssemble(bool skip_zeros) const
   {
-    if (a.GetMaxElementOrder() >= pa_order_threshold)
-    {
-      return Assemble();
-    }
-    else
-    {
-      return FullAssemble(skip_zeros);
-    }
+    return BilinearForm::FullAssemble(*PartialAssemble(), skip_zeros, true);
   }
 
-  std::unique_ptr<mfem::SparseMatrix> FullAssemble(bool skip_zeros) const
+  static std::unique_ptr<hypre::HypreCSRMatrix> FullAssemble(const ceed::Operator &op,
+                                                             bool skip_zeros)
   {
-    return FullAssemble(*Assemble(), skip_zeros);
+    return BilinearForm::FullAssemble(op, skip_zeros, true);
   }
-
-  std::unique_ptr<ceed::Operator> Assemble() const;
-
-  static std::unique_ptr<mfem::SparseMatrix> FullAssemble(const ceed::Operator &op,
-                                                          bool skip_zeros);
 };
 
 }  // namespace palace

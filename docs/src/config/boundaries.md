@@ -56,13 +56,13 @@
     [
         ...
     ],
+    "Periodic":
+    {
+        ...
+    },
     "Postprocessing":
     {
-        "Capacitance":
-        [
-            ...
-        ],
-        "Inductance":
+        "SurfaceFlux":
         [
             ...
         ],
@@ -70,6 +70,10 @@
         [
             ...
         ]
+        "FarField":
+        {
+            ...
+        }
     }
 }
 ```
@@ -91,21 +95,21 @@ boundary using a user specified surface impedance.
 artificial scattering boundary conditions at farfield boundaries.
 
 `"Conductivity"` :  Array of objects for configuring finite conductivity surface impedance
-boundary conditions. Finite conductivity boundaries are only available for the frequency
-domain driven simulation type.
+boundary conditions. Finite conductivity boundaries are only available for frequency
+domain driven and eigenmode simulation types.
 
 `"LumpedPort"` :  Array of objects for configuring lumped port boundary conditions. Lumped
 ports can be specified on boundaries which are internal to the computational domain.
 
 `"WavePort"` :  Array of objects for configuring numeric wave port boundary conditions. Wave
 ports can only be specified on boundaries which are on the true boundary of the
-computational domain. Additionally, wave port boundaries are only available for the
-frequency domain driven simulation type.
+computational domain. Additionally, wave port boundaries are only available for
+frequency domain driven and eigenmode simulation types.
 
-`"WavePortPEC"` :  Top-level object for configuring PEC boundary conditions for boundary
+`"WavePortPEC"` :  Top-level object for configuring additional PEC boundary conditions for boundary
 mode analysis performed on the wave port boundaries. Thus, this object is only relevant
-when wave port boundaries are specified under [`config["Boundaries"]["WavePort"]`]
-(#boundaries[%5B%22WavePort%22%5D]).
+when wave port boundaries are specified under
+[`config["Boundaries"]["WavePort"]`](#boundaries%5B%22WavePort%22%5D).
 
 `"SurfaceCurrent"` :  Array of objects for configuring surface current boundary conditions.
 This boundary prescribes a unit source surface current excitation on the given boundary in
@@ -124,15 +128,16 @@ surface.
 electrostatic simulations. Entries of the capacitance matrix are extracted corresponding to
 each terminal boundary.
 
+`"Periodic"` :  Top-level object for configuring periodic boundary conditions for surfaces
+with meshes that are identical after translation and/or rotation.
+
 `"Postprocessing"` :  Top-level object for configuring boundary postprocessing.
 
-`"Capacitance"` :  Array of objects for postprocessing surface capacitance by the ratio of
-the integral of the induced surface charge on the boundary and the excitation voltage.
-
-`"Inductance"` :  Array of objects for postprocessing surface inductance by the ratio of the
-integral of the magnetic flux through the boundary and the excitation current.
+`"SurfaceFlux"` :  Array of objects for postprocessing surface flux.
 
 `"Dielectric"` :  Array of objects for postprocessing surface interface dielectric loss.
+
+`"FarField"` :  Top-level object for extracting electric fields in the far-field region.
 
 ## `boundaries["PEC"]`
 
@@ -250,6 +255,7 @@ accounts for nonzero metal thickness.
         "Direction": <string> or [<float array>],
         "CoordinateSystem": <string>,
         "Excitation": <bool>,
+        "Active": <bool>,
         "R": <float>,
         "L": <float>,
         "C": <float>,
@@ -259,8 +265,8 @@ accounts for nonzero metal thickness.
         "Elements":
         [
             {
-                "Attributes": <string> or [<float array>],
-                "Direction": <string>,
+                "Attributes": <string>,
+                "Direction": <string> or [<float array>],
                 "CoordinateSystem": <string>
             },
             ...
@@ -282,7 +288,7 @@ element, use the `"Elements"` array described below.
 mode on this lumped port boundary. Axis aligned lumped ports can be specified using
 keywords: `"+X"`, `"-X"`, `"+Y"`, `"-Y"`, `"+Z"`, `"-Z"`, while coaxial lumped ports can be
 specified using `"+R"`, `"-R"`. The direction can alternatively be specified as a
-normalized array of three values, for example `[0, 1, 0]`. If a vector direction is
+normalized array of three values, for example `[0.0, 1.0, 0.0]`. If a vector direction is
 specified, the `"CoordinateSystem"` value specifies the coordinate system it is expressed
 in. If this port is to be a multielement lumped port with more than a single lumped
 element, use the `"Elements"` array described below.
@@ -292,8 +298,12 @@ vector, the options are `"Cartesian"` and `"Cylindrical"`. If a keyword argument
 for `"Direction"` this value is ignored, and the appropriate coordinate system is used
 instead.
 
-`"Excitation" [false]` :  Turns on or off port excitation for this lumped port boundary for
-driven or transient simulation types.
+`"Excitation" [false/0]` :  Turns on or off port excitation for this lumped port boundary for driven
+or transient simulation types. Can be specified either as a bool or as a non-negative integer — see
+[Boundary Conditions](../guide/boundaries.md#Lumped-and-wave-port-excitation).
+
+`"Active" [true]` :  Turns on or off damping boundary condition for this lumped port
+boundary for driven or transient simulation types.
 
 `"R" [0.0]` :  Circuit resistance used for computing this lumped port boundary's impedance,
 ``\Omega``. This option should only be used along with the corresponding `"L"` and `"C"`
@@ -343,8 +353,14 @@ corresponding coordinate system.
         "Index": <int>,
         "Attributes": [<int array>],
         "Excitation": <bool>,
+        "Active": <bool>,
         "Mode": <int>,
-        "Offset": <float>
+        "Offset": <float>,
+        "SolverType": <string>,
+        "MaxIts": <int>,
+        "KSPTol": <float>,
+        "EigenTol": <float>,
+        "Verbose": <int>
     },
     ...
 ]
@@ -357,14 +373,32 @@ with
 `"Attributes" [None]` :  Integer array of mesh boundary attributes for this wave port
 boundary.
 
-`"Excitation" [false]` :  Turns on or off port excitation for this wave port boundary for
-driven simulation types.
+`"Excitation" [false/0]` :  Turns on or off port excitation for this wave port boundary for driven
+simulation types. Can be specified either as a bool or as a non-negative integer — see [Boundary
+Conditions](../guide/boundaries.md#Lumped-and-wave-port-excitation).
+
+`"Active" [true]` :  Turns on or off damping boundary condition for this wave port boundary
+for driven simulation types.
 
 `"Mode" [1]` :  Mode index (1-based) for the characteristic port mode of this wave port
 boundary. Ranked in order of decreasing wave number.
 
 `"Offset" [0.0]` :  Offset distance used for scattering parameter de-embedding for this wave
 port boundary, specified in mesh length units.
+
+`"SolverType" ["Default"]` :  Specifies the eigenvalue solver to be used in computing
+the boundary mode for this wave port. See
+[`config["Solver"]["Eigenmode"]["Type"]`](solver.md#solver%5B%22Eigenmode%22%5D).
+
+`"MaxIts" [30]` :  Specifies the maximum number of iterations to be used in the GMRES
+solver.
+
+`"KSPTol" [1e-8]` :  Specifies the tolerance to be used in the linear solver.
+
+`"EigenTol" [1e-6]` :  Specifies the tolerance to be used in the eigenvalue solver.
+
+`"Verbose" [0]` :  Specifies the verbosity level to be used in the linear and eigensolver
+for the wave port problem.
 
 ## `boundaries["WavePortPEC"]`
 
@@ -377,9 +411,10 @@ port boundary, specified in mesh length units.
 
 with
 
-`"Attributes" [None]` :  Integer array of mesh boundary attributes to consider along with
-those specified under [`config["Boundaries"]["PEC"]["Attributes"]`]
-(#boundaries%5B%22PEC%22%5D) as PEC when performing wave port boundary mode analysis.
+`"Attributes" [None]` :  Integer array of mesh boundary attributes to consider as PEC when solving the
+2D eigenproblem for the wave port boundary mode analysis, along with those specified under
+[`config["Boundaries"]["PEC"]["Attributes"]`](#boundaries%5B%22PEC%22%5D) and
+[`config["Boundaries"]["Conductivity"]["Attributes"]`](#boundaries%5B%22Conductivity%22%5D).
 
 ## `boundaries["SurfaceCurrent"]`
 
@@ -438,9 +473,9 @@ element of a multielement current source can be described by its own unique dire
 which is specified here. The elements of a multielement source add in parallel to give the
 same total current as a single-element source.
 
-`"Elements"[]["CoordinateSystem"] ["Cartesian"]` :  This option is for multielement surface current
-boundaries and should not be combined with the `"CoordinateSystem"` field described above. Each
-element of a multielement current source can be described by its own unique
+`"Elements"[]["CoordinateSystem"] ["Cartesian"]` :  This option is for multielement surface
+current boundaries and should not be combined with the `"CoordinateSystem"` field described
+above. Each element of a multielement current source can be described by its own unique
 direction, and corresponding coordinate system.
 
 ## `boundaries["Ground"]`
@@ -477,7 +512,7 @@ zero-charge boundary condition.
 "Terminal":
 [
     {
-        "Index": <int>
+        "Index": <int>,
         "Attributes": [<int array>],
     },
     ...
@@ -492,16 +527,19 @@ to index the computed capacitance matrix.
 `"Attributes" [None]` :  Integer array of mesh boundary attributes for this terminal
 boundary.
 
-## `boundaries["Postprocessing"]["Capacitance"]`
+## `boundaries["Periodic"]`
 
 ```json
-"Postprocessing":
+"Periodic":
 {
-    "Capacitance":
+    "FloquetWaveVector": [<float array>],
+    "BoundaryPairs":
     [
         {
-            "Index": <int>
-            "Attributes": [<int array>],
+            "DonorAttributes": [<int array>],
+            "ReceiverAttributes": [<int array>],
+            "Translation": [<float array>],
+            "AffineTransformation": [<float array>],
         },
         ...
     ]
@@ -510,23 +548,38 @@ boundary.
 
 with
 
-`"Index" [None]` :  Index of this capacitance postprocessing boundary, used in
-postprocessing output files.
+`"DonorAttributes" [None]` :  Integer array of the donor attributes of the mesh boundary
+attributes for this periodic boundary.
 
-`"Attributes" [None]` :  Integer array of mesh boundary attributes for this capacitance
-postprocessing boundary.
+`"ReceiverAttributes" [None]` :  Integer array of the receiver attributes of the mesh boundary
+attributes for this periodic boundary.
 
-## `boundaries["Postprocessing"]["Inductance"]`
+`"Translation" [None]` :  Optional floating point array defining the distance from the donor
+attribute to the receiver attribute in mesh units. If neither `"Translation"` nor
+`"AffineTransformation"` are specified, the transformation between donor and receiver boundaries
+is automatically detected.
+
+`"AffineTransformation" [None]` :  Optional floating point array of size 16 defining the
+three-dimensional (4 x 4) affine transformation matrix (in row major format) from the donor attribute
+to the receiver attribute in mesh units. If neither `"Translation"` or `"AffineTransformation"` are
+specified, the transformation between donor and receiver boundaries is automatically detected.
+
+`"FloquetWaveVector" [None]` :  Optional floating point array defining the phase delay between the
+periodic boundaries in the X/Y/Z directions in radians per mesh unit.
+
+## `boundaries["Postprocessing"]["SurfaceFlux"]`
 
 ```json
 "Postprocessing":
 {
-    "Inductance":
+    "SurfaceFlux":
     [
         {
             "Index": <int>,
             "Attributes": [<int array>],
-            "Direction": <string>
+            "Type": <string>,
+            "TwoSided": <bool>,
+            "Center": [<float array>]
         },
         ...
     ]
@@ -535,18 +588,31 @@ postprocessing boundary.
 
 with
 
-`"Index" [None]` :  Index of this inductance postprocessing boundary, used in postprocessing
-output files.
+`"Index" [None]` :  Index of this surface flux postprocessing boundary, used in
+postprocessing output files.
 
-`"Attributes" [None]` :  Integer array of mesh boundary attributes for this inductance
+`"Attributes" [None]` :  Integer array of mesh boundary attributes for this surface flux
 postprocessing boundary.
 
-`"Direction" [None]` :  Defines the global direction with which to orient the surface
-normals with computing the magnetic flux for this inductance postprocessing boundary. The
-available options are: `"+X"`, `"-X"`, `"+Y"`, `"-Y"`, `"+Z"`, `"-Z"`. The direction can
-alternatively be specified as a normalized array of three values, for example `[0, 1, 0]`.
-The true surface normal is used in the calculation, `"Direction"` is only used to ensure
-the correct choice of orientation of the normal.
+`"Type" [None]` :  Specifies the type of surface flux to calculate for this postprocessing
+boundary. The available options are:
+
+  - `"Electric"` :  Integrate the electric flux density over the boundary surface.
+  - `"Magnetic"` :  Integrate the magnetic flux density over the boundary surface.
+  - `"Power"` :  Integrate the energy flux density, given by the Poynting vector, over the
+    boundary surface.
+
+`"TwoSided" [false]` :  Specifies how to account for internal boundary surfaces with a
+possible discontinuous field on either side. When set to `false`, the flux on either side of
+an internal boundary surface is averaged. When `true`, it is summed with an opposite normal
+direction.
+
+`"Center" [None]` :  Floating point array of length equal to the model spatial dimension
+specifying the coordinates of a central point used to compute the outward flux. The true
+surface normal is used in the calculation, and this point is only used to ensure the correct
+orientation of the normal. Specified in mesh length units, and only relevant when
+`"TwoSided"` is `false`. If not specified, the point will be computed as the centroid of the
+axis-aligned bounding box for all elements making up the postprocessing boundary.
 
 ## `boundaries["Postprocessing"]["Dielectric"]`
 
@@ -558,21 +624,10 @@ the correct choice of orientation of the normal.
         {
             "Index": <int>,
             "Attributes": [<int array>],
-            "Side": <string> or [<float array>],
+            "Type": <string>,
             "Thickness": <float>,
             "Permittivity": <float>,
-            "PermittivityMA": <float>,
-            "PermittivityMS": <float>,
-            "PermittivitySA": <float>,
-            "LossTan": <float>,
-            "Elements":
-            [
-                {
-                    "Attributes": [<int array>],
-                    "Side": <string> or [<float array>]
-                },
-                ...
-            ]
+            "LossTan": <float>
         },
         ...
     ]
@@ -581,51 +636,55 @@ the correct choice of orientation of the normal.
 
 with
 
-`"Index" [None]` :  Index of this lossy dielectric interface, used in postprocessing output
-files.
+`"Index" [None]` :  Index of this dielectric interface, used in postprocessing output files.
 
-`"Attributes" [None]` :  Integer array of mesh boundary attributes for this lossy dielectric
-interface. If the interface consists of multiple elements with different `"Side"` values,
-use the `"Elements"` array described below.
+`"Attributes" [None]` :  Integer array of mesh boundary attributes for this dielectric
+interface.
 
-`"Side" [None]` :  Defines the postprocessing side when this dielectric interface is an
-internal boundary surface (and thus the electric field on the boundary is in general
-double-valued). The available options are: `"+X"`, `"-X"`, `"+Y"`, `"-Y"`, `"+Z"`, `"-Z"`.
-The direction can alternatively be specified as a normalized array of three values, for
-example `[0, 1, 0]`. If the boundary is not axis-aligned, the field value is taken from the
-side which is oriented along the specified direction. If no `"Side"` is specified, the
-field solution is taken from the neighboring element with the smaller electrical
-permittivity, which is an attempt to get the field in the domain corresponding to vacuum.
-If the interface consists of multiple elements with different `"Side"` values, use the
-`"Elements"` array described below.
+`"Type" [None]` :  Specifies the type of dielectric interface for this postprocessing
+boundary. See also [this page](../reference.md#Bulk-and-interface-dielectric-loss).
+Available options are:
+
+  - `"Default"` :  Use the full electric field evaluated at the boundary to compute the
+    energy participation ratio (EPR) of this dielectric interface and estimate loss.
+  - `"MA"` :  Use the boundary conditions assuming a metal-air interface to compute the EPR
+    of this dielectric interface.
+  - `"MS"` :  Use the boundary conditions assuming a metal-substrate interface to compute
+    the EPR of this dielectric interface.
+  - `"SA"` :  Use the boundary conditions assuming a substrate-air interface to compute the
+    EPR of this dielectric interface.
 
 `"Thickness" [None]` :  Thickness of this dielectric interface, specified in mesh length
 units.
 
-`"Permittivity" [None]` :  Relative permittivity for this dielectric interface. Leads to the
-general quality factor calculation without assuming the interface is a specific metal-air
-(MA), metal-substrate (MS), or substrate-air (SA) interface. None of `"PermittivityMA"`,
-`"PermittivityMS"`, or `"PermittivitySA"` should be specified when this value is given.
-
-`"PermittivityMA" [None]` :  Relative permittivity for this dielectric interface assuming it
-is a metal-air (MA) interface. None of `"PermittivityMS"`, `"PermittivitySA"`, or the
-general `"Permittivity"` should be specified when this value is given.
-
-`"PermittivityMS" [None]` :  Relative permittivity for this dielectric interface assuming it
-is a metal-substrate (MS) interface. None of `"PermittivityMA"`, `"PermittivitySA"`, or the
-general `"Permittivity"` should be specified when this value is given.
-
-`"PermittivitySA" [None]` :  Relative permittivity for this dielectric interface assuming it
-is a substrate-air (SA) interface. None of `"PermittivityMA"`, `"PermittivityMS"`, or the
-general `"Permittivity"` should be specified when this value is given.
+`"Permittivity" [None]` :  Relative permittivity for this dielectric interface. This should
+be the interface layer permittivity for the specific `"Type"` of interface specified.
 
 `"LossTan" [0.0]` :  Loss tangent for this lossy dielectric interface.
 
-`"Elements"[]."Attributes" [None]` :  This option should not be combined with the
-`"Attributes"` field described above. In the case where a single dielectric interface is
-made up of contributions with their own unique integer arrays of mesh boundary attributes,
-they can be specified here.
+## `boundaries["Postprocessing"]["FarField"]`
 
-`"Elements"[]."Side" [None]` :  This option should not be combined with the `"Side"` field
-described above. In the case where a single dielectric interface is made up of contributions
-with their own entry for side, they can be specified here.
+```json
+"Postprocessing":
+{
+    "FarField":
+    {
+        "Attributes": [<int array>],
+        "NSample": <int>,
+        "ThetaPhis": [<array of pairs of floats>]
+    }
+}
+```
+
+with
+
+`"Attributes" [None]` : Integer array of mesh boundary attributes to be used to
+compute the far fields. It has to be an external boundary and enclose the
+system.
+
+`"NSample" [0]` : Number of uniformly-spaced points to use to discretize the
+far-field sphere.
+
+`"ThetaPhi" [None]` : Evaluate the far-field electric field at these specific
+angles too (in degrees). $\theta \in [0, 180°]$ is the polar angle and $\phi \in
+[0, 360°]$ is the azimuthal angle.

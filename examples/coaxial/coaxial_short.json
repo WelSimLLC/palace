@@ -3,11 +3,11 @@
   {
     "Type": "Transient",
     "Verbose": 2,
-    "Output": "D:/WelSimLLC/executable28/_palace_examples/coaxial/postpro/short"
+    "Output": "postpro/short"
   },
   "Model":
   {
-    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/coaxial/mesh/coaxial.msh",
+    "Mesh": "mesh/coaxial.msh",
     "L0": 1.0e-3  // mm
   },
   "Domains":
@@ -42,6 +42,7 @@
   "Solver":
   {
     "Order": 3,
+    "Device": "CPU",
     "Transient":
     {
       "Type": "GeneralizedAlpha",

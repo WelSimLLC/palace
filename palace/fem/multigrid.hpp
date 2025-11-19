@@ -8,6 +8,8 @@
 #include <vector>
 #include <mfem.hpp>
 #include "fem/fespace.hpp"
+#include "fem/mesh.hpp"
+#include "utils/geodata.hpp"
 #include "utils/iodata.hpp"
 
 namespace palace::fem
@@ -20,8 +22,7 @@ namespace palace::fem
 // Construct sequence of FECollection objects.
 template <typename FECollection>
 inline std::vector<std::unique_ptr<FECollection>>
-ConstructFECollections(int p, int dim, int mg_max_levels,
-                       config::LinearSolverData::MultigridCoarsenType mg_coarsen_type,
+ConstructFECollections(int p, int dim, int mg_max_levels, MultigridCoarsening mg_coarsening,
                        bool mat_lor)
 {
   // If the solver will use a LOR preconditioner, we need to construct with a specific basis
@@ -56,12 +57,12 @@ ConstructFECollections(int p, int dim, int mg_max_levels,
     {
       break;
     }
-    switch (mg_coarsen_type)
+    switch (mg_coarsening)
     {
-      case config::LinearSolverData::MultigridCoarsenType::LINEAR:
+      case MultigridCoarsening::LINEAR:
         p--;
         break;
-      case config::LinearSolverData::MultigridCoarsenType::LOGARITHMIC:
+      case MultigridCoarsening::LOGARITHMIC:
         p = (p + pmin) / 2;
         break;
     }
@@ -75,102 +76,49 @@ ConstructFECollections(int p, int dim, int mg_max_levels,
 // element collections. Additionally, Dirichlet boundary conditions are marked.
 template <typename FECollection>
 inline FiniteElementSpaceHierarchy ConstructFiniteElementSpaceHierarchy(
-    int mg_max_levels, const std::vector<std::unique_ptr<mfem::ParMesh>> &mesh,
+    int mg_max_levels, const std::vector<std::unique_ptr<Mesh>> &mesh,
     const std::vector<std::unique_ptr<FECollection>> &fecs,
-    const mfem::Array<int> *dbc_marker = nullptr,
+    const mfem::Array<int> *dbc_attr = nullptr,
     std::vector<mfem::Array<int>> *dbc_tdof_lists = nullptr)
 {
   MFEM_VERIFY(!mesh.empty() && !fecs.empty() &&
                   (!dbc_tdof_lists || dbc_tdof_lists->empty()),
               "Empty mesh or FE collection for FE space construction!");
-  int coarse_mesh_l =
-      std::max(0, static_cast<int>(mesh.size() + fecs.size()) - 1 - mg_max_levels);
+  int coarse_mesh_l = std::max(0, static_cast<int>(mesh.size() + fecs.size()) - 1 -
+                                      std::max(1, mg_max_levels));
   FiniteElementSpaceHierarchy fespaces(
-      std::make_unique<FiniteElementSpace>(mesh[coarse_mesh_l].get(), fecs[0].get()));
-  if (dbc_marker && dbc_tdof_lists)
+      std::make_unique<FiniteElementSpace>(*mesh[coarse_mesh_l], fecs[0].get()));
+
+  mfem::Array<int> dbc_marker;
+  if (dbc_attr && dbc_tdof_lists)
   {
-    fespaces.GetFinestFESpace().GetEssentialTrueDofs(*dbc_marker,
-                                                     dbc_tdof_lists->emplace_back());
+    int bdr_attr_max = mesh[coarse_mesh_l]->Get().bdr_attributes.Size()
+                           ? mesh[coarse_mesh_l]->Get().bdr_attributes.Max()
+                           : 0;
+    dbc_marker = mesh::AttrToMarker(bdr_attr_max, *dbc_attr);
+    fespaces.GetFinestFESpace().Get().GetEssentialTrueDofs(dbc_marker,
+                                                           dbc_tdof_lists->emplace_back());
   }
 
-  // h-refinement
+  // h-refinement.
   for (std::size_t l = coarse_mesh_l + 1; l < mesh.size(); l++)
   {
-    fespaces.AddLevel(std::make_unique<FiniteElementSpace>(mesh[l].get(), fecs[0].get()));
-    if (dbc_marker && dbc_tdof_lists)
+    fespaces.AddLevel(std::make_unique<FiniteElementSpace>(*mesh[l], fecs[0].get()));
+    if (dbc_attr && dbc_tdof_lists)
     {
-      fespaces.GetFinestFESpace().GetEssentialTrueDofs(*dbc_marker,
-                                                       dbc_tdof_lists->emplace_back());
+      fespaces.GetFinestFESpace().Get().GetEssentialTrueDofs(
+          dbc_marker, dbc_tdof_lists->emplace_back());
     }
   }
 
-  // p-refinement
+  // p-refinement.
   for (std::size_t l = 1; l < fecs.size(); l++)
   {
-    fespaces.AddLevel(
-        std::make_unique<FiniteElementSpace>(mesh.back().get(), fecs[l].get()));
-    if (dbc_marker && dbc_tdof_lists)
+    fespaces.AddLevel(std::make_unique<FiniteElementSpace>(*mesh.back(), fecs[l].get()));
+    if (dbc_attr && dbc_tdof_lists)
     {
-      fespaces.GetFinestFESpace().GetEssentialTrueDofs(*dbc_marker,
-                                                       dbc_tdof_lists->emplace_back());
-    }
-  }
-
-  return fespaces;
-}
-
-// Similar to ConstructFiniteElementSpaceHierarchy above, but in this case the finite
-// element space at each level is an auxiliary space associated with the coresponding level
-// of the provided finite element space objects.
-template <typename FECollection>
-inline AuxiliaryFiniteElementSpaceHierarchy ConstructAuxiliaryFiniteElementSpaceHierarchy(
-    const FiniteElementSpaceHierarchy &primal_fespaces,
-    const std::vector<std::unique_ptr<FECollection>> &fecs,
-    const mfem::Array<int> *dbc_marker = nullptr,
-    std::vector<mfem::Array<int>> *dbc_tdof_lists = nullptr)
-{
-  MFEM_VERIFY((primal_fespaces.GetNumLevels() > 0) && !fecs.empty() &&
-                  (!dbc_tdof_lists || dbc_tdof_lists->empty()),
-              "Empty mesh or FE collection for FE space construction!");
-  mfem::ParMesh *mesh = primal_fespaces.GetFESpaceAtLevel(0).GetParMesh();
-  AuxiliaryFiniteElementSpaceHierarchy fespaces(
-      std::make_unique<AuxiliaryFiniteElementSpace>(primal_fespaces.GetFESpaceAtLevel(0),
-                                                    mesh, fecs[0].get()));
-  if (dbc_marker && dbc_tdof_lists)
-  {
-    fespaces.GetFinestFESpace().GetEssentialTrueDofs(*dbc_marker,
-                                                     dbc_tdof_lists->emplace_back());
-  }
-
-  // h-refinement
-  std::size_t l;
-  for (l = 1; l < primal_fespaces.GetNumLevels(); l++)
-  {
-    if (primal_fespaces.GetFESpaceAtLevel(l).GetParMesh() == mesh)
-    {
-      break;
-    }
-    fespaces.AddLevel(std::make_unique<AuxiliaryFiniteElementSpace>(
-        primal_fespaces.GetFESpaceAtLevel(l),
-        primal_fespaces.GetFESpaceAtLevel(l).GetParMesh(), fecs[0].get()));
-    if (dbc_marker && dbc_tdof_lists)
-    {
-      fespaces.GetFinestFESpace().GetEssentialTrueDofs(*dbc_marker,
-                                                       dbc_tdof_lists->emplace_back());
-    }
-    mesh = primal_fespaces.GetFESpaceAtLevel(l).GetParMesh();
-  }
-
-  // p-refinement
-  const auto l0 = l - 1;
-  for (; l < primal_fespaces.GetNumLevels(); l++)
-  {
-    fespaces.AddLevel(std::make_unique<AuxiliaryFiniteElementSpace>(
-        primal_fespaces.GetFESpaceAtLevel(l), mesh, fecs[l - l0].get()));
-    if (dbc_marker && dbc_tdof_lists)
-    {
-      fespaces.GetFinestFESpace().GetEssentialTrueDofs(*dbc_marker,
-                                                       dbc_tdof_lists->emplace_back());
+      fespaces.GetFinestFESpace().Get().GetEssentialTrueDofs(
+          dbc_marker, dbc_tdof_lists->emplace_back());
     }
   }
 

@@ -14,14 +14,12 @@
 #include <string_view>
 #include <mfem.hpp>
 #include <nlohmann/json.hpp>
+#include "fem/bilinearform.hpp"
+#include "fem/integrator.hpp"
 #include "utils/communication.hpp"
-#include "utils/constants.hpp"
 #include "utils/geodata.hpp"
 
 namespace palace
-{
-
-namespace
 {
 
 std::stringstream PreprocessFile(const char *filename)
@@ -41,10 +39,12 @@ std::stringstream PreprocessFile(const char *filename)
   }
 
   // Strip C and C++ style comments (//, /* */) using regex. Correctly handles comments
-  // within strings and escaped comment markers (see tinyurl.com/2s3n8dkr).
+  // within strings and escaped comment markers (see tinyurl.com/2s3n8dkr). An alternative
+  // for the middle line is: R"(|(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/))", but this
+  // seems to sometimes lead to issues with std::regex_replace for long files.
   {
     std::regex rgx(R"((([\"'])(?:(?=(\\?))\3.)*?\2))"
-                   R"(|(\/\*([^*]|[\r\n]|(\*+([^*\/]|[\r\n])))*\*+\/))"
+                   R"(|(\/\*(.|[\r\n])*?\*\/))"
                    R"(|(\/\/.*))");
     file = std::regex_replace(file, rgx, "$1");
   }
@@ -70,6 +70,10 @@ std::stringstream PreprocessFile(const char *filename)
   auto RangeExpand = [](std::string_view str) -> std::string
   {
     // Handle the given string which is only numeric with possible hyphens.
+    if (str.empty())
+    {
+      return "";
+    }
     int num;
     auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.length(), num);
     MFEM_VERIFY(
@@ -143,11 +147,9 @@ std::stringstream PreprocessFile(const char *filename)
   return output;
 }
 
-}  // namespace
-
 using json = nlohmann::json;
 
-IoData::IoData(const char *filename, bool print) : Lc(1.0), tc(1.0), init(false)
+IoData::IoData(const char *filename, bool print) : units(1.0, 1.0), init(false)
 {
   // Open configuration file and preprocess: strip whitespace, comments, and expand integer
   // ranges.
@@ -221,24 +223,15 @@ void IoData::CheckConfiguration()
 {
   // Check that the provided domain and boundary objects are all supported by the requested
   // problem type.
-  if (problem.type == config::ProblemData::Type::DRIVEN)
+  if (problem.type == ProblemType::DRIVEN)
   {
     // No unsupported domain or boundary objects for frequency domain driven simulations.
   }
-  else if (problem.type == config::ProblemData::Type::EIGENMODE)
+  else if (problem.type == ProblemType::EIGENMODE)
   {
-    if (!boundaries.conductivity.empty())
-    {
-      Mpi::Warning("Eigenmode problem type does not support surface conductivity boundary "
-                   "conditions!\n");
-    }
-    if (!boundaries.auxpec.empty() || !boundaries.waveport.empty())
-    {
-      Mpi::Warning(
-          "Eigenmode problem type does not support wave port boundary conditions!\n");
-    }
+    // No unsupported domain or boundary objects for frequency domain driven simulations.
   }
-  else if (problem.type == config::ProblemData::Type::ELECTROSTATIC)
+  else if (problem.type == ProblemType::ELECTROSTATIC)
   {
     if (!boundaries.farfield.empty())
     {
@@ -265,19 +258,9 @@ void IoData::CheckConfiguration()
       Mpi::Warning(
           "Electrostatic problem type does not support surface current excitation!\n");
     }
-    if (!boundaries.postpro.inductance.empty())
-    {
-      Mpi::Warning("Electrostatic problem type does not support boundary inductance "
-                   "postprocessing!\n");
-    }
   }
-  else if (problem.type == config::ProblemData::Type::MAGNETOSTATIC)
+  else if (problem.type == ProblemType::MAGNETOSTATIC)
   {
-    if (!domains.postpro.dielectric.empty())
-    {
-      Mpi::Warning("Magnetostatic problem type does not support domain bulk dielectric "
-                   "loss postprocessing!\n");
-    }
     if (!boundaries.farfield.empty())
     {
       Mpi::Warning(
@@ -303,18 +286,13 @@ void IoData::CheckConfiguration()
       Mpi::Warning(
           "Magnetostatic problem type does not support wave port boundary conditions!\n");
     }
-    if (!boundaries.postpro.capacitance.empty())
-    {
-      Mpi::Warning("Magnetostatic problem type does not support boundary capacitance "
-                   "postprocessing!\n");
-    }
     if (!boundaries.postpro.dielectric.empty())
     {
       Mpi::Warning("Magnetostatic problem type does not support boundary interface "
                    "dielectric loss postprocessing!\n");
     }
   }
-  else if (problem.type == config::ProblemData::Type::TRANSIENT)
+  else if (problem.type == ProblemType::TRANSIENT)
   {
     if (!boundaries.conductivity.empty())
     {
@@ -326,51 +304,51 @@ void IoData::CheckConfiguration()
       Mpi::Warning(
           "Transient problem type does not support wave port boundary conditions!\n");
     }
+    if (!boundaries.farfield.empty() && boundaries.farfield.order > 1)
+    {
+      Mpi::Warning("Transient problem type does not support absorbing boundary conditions "
+                   "with order > 1!\n");
+    }
   }
 
-  // XX TODO: Default value for pa_order_threshold if we want PA enabled by default
-  // XX TODO: Enable Device::GPU by default if MFEM built with CUDA/HIP support?
-
   // Resolve default values in configuration file.
-  if (solver.linear.type == config::LinearSolverData::Type::DEFAULT)
+  if (solver.linear.type == LinearSolver::DEFAULT)
   {
-    if (problem.type == config::ProblemData::Type::ELECTROSTATIC ||
-        (problem.type == config::ProblemData::Type::TRANSIENT &&
-         solver.transient.type == config::TransientSolverData::Type::CENTRAL_DIFF))
+    if (problem.type == ProblemType::ELECTROSTATIC)
     {
-      solver.linear.type = config::LinearSolverData::Type::BOOMER_AMG;
+      solver.linear.type = LinearSolver::BOOMER_AMG;
     }
-    else if (problem.type == config::ProblemData::Type::MAGNETOSTATIC ||
-             problem.type == config::ProblemData::Type::TRANSIENT)
+    else if (problem.type == ProblemType::MAGNETOSTATIC ||
+             problem.type == ProblemType::TRANSIENT)
     {
-      solver.linear.type = config::LinearSolverData::Type::AMS;
+      solver.linear.type = LinearSolver::AMS;
     }
     else
     {
       // Prefer sparse direct solver for frequency domain problems if available.
 #if defined(MFEM_USE_SUPERLU)
-      solver.linear.type = config::LinearSolverData::Type::SUPERLU;
+      solver.linear.type = LinearSolver::SUPERLU;
 #elif defined(MFEM_USE_STRUMPACK)
-      solver.linear.type = config::LinearSolverData::Type::STRUMPACK;
+      solver.linear.type = LinearSolver::STRUMPACK;
 #elif defined(MFEM_USE_MUMPS)
-      solver.linear.type = config::LinearSolverData::Type::MUMPS;
+      solver.linear.type = LinearSolver::MUMPS;
 #else
-      solver.linear.type = config::LinearSolverData::Type::AMS;
+      solver.linear.type = LinearSolver::AMS;
 #endif
     }
   }
-  if (solver.linear.ksp_type == config::LinearSolverData::KspType::DEFAULT)
+  if (solver.linear.krylov_solver == KrylovSolver::DEFAULT)
   {
     // Problems with SPD operators use CG by default, else GMRES.
-    if (problem.type == config::ProblemData::Type::ELECTROSTATIC ||
-        problem.type == config::ProblemData::Type::MAGNETOSTATIC ||
-        problem.type == config::ProblemData::Type::TRANSIENT)
+    if (problem.type == ProblemType::ELECTROSTATIC ||
+        problem.type == ProblemType::MAGNETOSTATIC ||
+        problem.type == ProblemType::TRANSIENT)
     {
-      solver.linear.ksp_type = config::LinearSolverData::KspType::CG;
+      solver.linear.krylov_solver = KrylovSolver::CG;
     }
     else
     {
-      solver.linear.ksp_type = config::LinearSolverData::KspType::GMRES;
+      solver.linear.krylov_solver = KrylovSolver::GMRES;
     }
   }
   if (solver.linear.max_size < 0)
@@ -379,14 +357,13 @@ void IoData::CheckConfiguration()
   }
   if (solver.linear.initial_guess < 0)
   {
-    if ((problem.type == config::ProblemData::Type::DRIVEN &&
-         solver.driven.adaptive_tol <= 0.0) ||
-        problem.type == config::ProblemData::Type::TRANSIENT ||
-        problem.type == config::ProblemData::Type::ELECTROSTATIC ||
-        problem.type == config::ProblemData::Type::MAGNETOSTATIC)
+    if ((problem.type == ProblemType::DRIVEN && solver.driven.adaptive_tol <= 0.0) ||
+        problem.type == ProblemType::TRANSIENT ||
+        problem.type == ProblemType::ELECTROSTATIC ||
+        problem.type == ProblemType::MAGNETOSTATIC)
     {
       // Default true only driven simulations without adaptive frequency sweep, transient
-      // simulations, or electrostatic or magnetostatics.
+      // simulations, electrostatics, or magnetostatics.
       solver.linear.initial_guess = 1;
     }
     else
@@ -396,8 +373,7 @@ void IoData::CheckConfiguration()
   }
   if (solver.linear.pc_mat_shifted < 0)
   {
-    if (problem.type == config::ProblemData::Type::DRIVEN &&
-        solver.linear.type == config::LinearSolverData::Type::AMS)
+    if (problem.type == ProblemType::DRIVEN && solver.linear.type == LinearSolver::AMS)
     {
       // Default true only driven simulations using AMS (false for most cases).
       solver.linear.pc_mat_shifted = 1;
@@ -409,8 +385,8 @@ void IoData::CheckConfiguration()
   }
   if (solver.linear.mg_smooth_aux < 0)
   {
-    if (problem.type == config::ProblemData::Type::ELECTROSTATIC ||
-        problem.type == config::ProblemData::Type::MAGNETOSTATIC)
+    if (problem.type == ProblemType::ELECTROSTATIC ||
+        problem.type == ProblemType::MAGNETOSTATIC)
     {
       // Disable auxiliary space smoothing using distributive relaxation by default for
       // problems which don't need it.
@@ -425,6 +401,33 @@ void IoData::CheckConfiguration()
   {
     solver.linear.mg_smooth_order = std::max(2 * solver.order, 4);
   }
+  if (solver.linear.ams_singular_op < 0)
+  {
+    solver.linear.ams_singular_op = (problem.type == ProblemType::MAGNETOSTATIC);
+  }
+  if (solver.linear.amg_agg_coarsen < 0)
+  {
+    solver.linear.amg_agg_coarsen = (problem.type == ProblemType::ELECTROSTATIC ||
+                                     problem.type == ProblemType::MAGNETOSTATIC ||
+                                     problem.type == ProblemType::TRANSIENT);
+  }
+  if (solver.linear.reorder_reuse && solver.linear.drop_small_entries &&
+      solver.linear.complex_coarse_solve && (problem.type == ProblemType::EIGENMODE) &&
+      (!boundaries.waveport.empty() || !boundaries.conductivity.empty() ||
+       (!boundaries.farfield.empty() && boundaries.farfield.order > 1)))
+  {
+    // Do not reuse the sparsity pattern for nonlinear eigenmode simulations with complex
+    // coarse preconditioners when dropping small entries. In those cases, the sparsity
+    // pattern of the first preconditioner (purely real coefficients) will be different from
+    // subsequent preconditioners with complex coefficients.
+    solver.linear.reorder_reuse = false;
+  }
+  // Configure settings for quadrature rules and partial assembly.
+  BilinearForm::pa_order_threshold = solver.pa_order_threshold;
+  fem::DefaultIntegrationOrder::p_trial = solver.order;
+  fem::DefaultIntegrationOrder::q_order_jac = solver.q_order_jac;
+  fem::DefaultIntegrationOrder::q_order_extra_pk = solver.q_order_extra;
+  fem::DefaultIntegrationOrder::q_order_extra_qk = solver.q_order_extra;
 }
 
 namespace
@@ -445,175 +448,126 @@ constexpr config::SymmetricMatrixData<N> &operator/=(config::SymmetricMatrixData
 
 void IoData::NondimensionalizeInputs(mfem::ParMesh &mesh)
 {
-  // Nondimensionalization of the equations is based on a given length Lc in[m], typically
+  // Nondimensionalization of the equations is based on a given length Lc in [m], typically
   // the largest domain dimension. Configuration file lengths and the mesh coordinates are
   // provided with units of model.L0 x [m].
   MFEM_VERIFY(!init, "NondimensionalizeInputs should only be called once!");
   init = true;
 
-  // Calculate the reference length and time.
-  if (model.Lc > 0.0)
-  {
-    // User specified Lc in mesh length units.
-    Lc = model.Lc * model.L0;  // [m]
-  }
-  else
+  // Calculate the reference length and time. A user specified model.Lc is in mesh length
+  // units.
+  if (model.Lc <= 0.0)
   {
     mfem::Vector bbmin, bbmax;
-    mesh.GetBoundingBox(bbmin, bbmax);
+    mesh::GetAxisAlignedBoundingBox(mesh, bbmin, bbmax);
     bbmax -= bbmin;
-    bbmax *= model.L0;  // [m]
-    Lc = *std::max_element(bbmax.begin(), bbmax.end());
+    model.Lc = *std::max_element(bbmax.begin(), bbmax.end());
   }
-  tc = 1.0e9 * Lc / electromagnetics::c0_;  // [ns]
+  // Define units now mesh length set. Note: In model field Lc is measured in units of L0.
+  units = Units(model.L0, model.Lc * model.L0);
 
   // Mesh refinement parameters.
-  auto Divides = [this](double val) { return val / (Lc / model.L0); };
+  auto DivideLengthScale = [Lc0 = units.GetMeshLengthRelativeScale()](double val)
+  { return val / Lc0; };
   for (auto &box : model.refinement.GetBoxes())
   {
-    std::transform(box.bbmin.begin(), box.bbmin.end(), box.bbmin.begin(), Divides);
-    std::transform(box.bbmax.begin(), box.bbmax.end(), box.bbmax.begin(), Divides);
+    std::transform(box.bbmin.begin(), box.bbmin.end(), box.bbmin.begin(),
+                   DivideLengthScale);
+    std::transform(box.bbmax.begin(), box.bbmax.end(), box.bbmax.begin(),
+                   DivideLengthScale);
   }
   for (auto &sphere : model.refinement.GetSpheres())
   {
-    sphere.r /= Lc / model.L0;
+    sphere.r /= units.GetMeshLengthRelativeScale();
     std::transform(sphere.center.begin(), sphere.center.end(), sphere.center.begin(),
-                   Divides);
+                   DivideLengthScale);
   }
 
   // Materials: conductivity and London penetration depth.
   for (auto &data : domains.materials)
   {
-    data.sigma /= 1.0 / (electromagnetics::Z0_ * Lc);
-    data.lambda_L /= Lc / model.L0;
+    data.sigma /= units.GetScaleFactor<Units::ValueType::CONDUCTIVITY>();
+    data.lambda_L /= units.GetMeshLengthRelativeScale();
   }
 
   // Probe location coordinates.
   for (auto &[idx, data] : domains.postpro.probe)
   {
-    data.x /= Lc / model.L0;
-    data.y /= Lc / model.L0;
-    data.z /= Lc / model.L0;
+    std::transform(data.center.begin(), data.center.end(), data.center.begin(),
+                   DivideLengthScale);
   }
 
   // Finite conductivity boundaries.
   for (auto &data : boundaries.conductivity)
   {
-    data.sigma /= 1.0 / (electromagnetics::Z0_ * Lc);
-    data.h /= Lc / model.L0;
+    data.sigma /= units.GetScaleFactor<Units::ValueType::CONDUCTIVITY>();
+    data.h /= units.GetMeshLengthRelativeScale();
   }
 
   // Impedance boundaries and lumped ports.
   for (auto &data : boundaries.impedance)
   {
-    data.Rs /= electromagnetics::Z0_;
-    data.Ls /= electromagnetics::mu0_ * Lc;
-    data.Cs /= electromagnetics::epsilon0_ * Lc;
+    data.Rs /= units.GetScaleFactor<Units::ValueType::IMPEDANCE>();
+    data.Ls /= units.GetScaleFactor<Units::ValueType::INDUCTANCE>();
+    data.Cs /= units.GetScaleFactor<Units::ValueType::CAPACITANCE>();
   }
   for (auto &[idx, data] : boundaries.lumpedport)
   {
-    data.R /= electromagnetics::Z0_;
-    data.L /= electromagnetics::mu0_ * Lc;
-    data.C /= electromagnetics::epsilon0_ * Lc;
-    data.Rs /= electromagnetics::Z0_;
-    data.Ls /= electromagnetics::mu0_ * Lc;
-    data.Cs /= electromagnetics::epsilon0_ * Lc;
+    data.R /= units.GetScaleFactor<Units::ValueType::IMPEDANCE>();
+    data.L /= units.GetScaleFactor<Units::ValueType::INDUCTANCE>();
+    data.C /= units.GetScaleFactor<Units::ValueType::CAPACITANCE>();
+    data.Rs /= units.GetScaleFactor<Units::ValueType::IMPEDANCE>();
+    data.Ls /= units.GetScaleFactor<Units::ValueType::INDUCTANCE>();
+    data.Cs /= units.GetScaleFactor<Units::ValueType::CAPACITANCE>();
+  }
+
+  // Floquet periodic boundaries.
+  for (auto &k : boundaries.periodic.wave_vector)
+  {
+    k *= units.GetMeshLengthRelativeScale();
   }
 
   // Wave port offset distance.
   for (auto &[idx, data] : boundaries.waveport)
   {
-    data.d_offset /= Lc / model.L0;
+    data.d_offset /= units.GetMeshLengthRelativeScale();
+  }
+
+  // Center coordinates for surface flux.
+  for (auto &[idx, data] : boundaries.postpro.flux)
+  {
+    std::transform(data.center.begin(), data.center.end(), data.center.begin(),
+                   DivideLengthScale);
   }
 
   // Dielectric interface thickness.
   for (auto &[idx, data] : boundaries.postpro.dielectric)
   {
-    data.ts /= Lc / model.L0;
+    data.t /= units.GetMeshLengthRelativeScale();
   }
 
   // For eigenmode simulations:
-  solver.eigenmode.target *= 2.0 * M_PI * tc;
-  solver.eigenmode.feast_contour_ub *= 2.0 * M_PI * tc;
+  solver.eigenmode.target /= units.GetScaleFactor<Units::ValueType::FREQUENCY>();
+  solver.eigenmode.target_upper /= units.GetScaleFactor<Units::ValueType::FREQUENCY>();
 
   // For driven simulations:
-  solver.driven.min_f *= 2.0 * M_PI * tc;
-  solver.driven.max_f *= 2.0 * M_PI * tc;
-  solver.driven.delta_f *= 2.0 * M_PI * tc;
+  for (auto &f : solver.driven.sample_f)
+    f /= units.GetScaleFactor<Units::ValueType::FREQUENCY>();
 
   // For transient simulations:
-  solver.transient.pulse_f *= 2.0 * M_PI * tc;
-  solver.transient.pulse_tau /= tc;
-  solver.transient.max_t /= tc;
-  solver.transient.delta_t /= tc;
+  solver.transient.pulse_f /= units.GetScaleFactor<Units::ValueType::FREQUENCY>();
+  solver.transient.pulse_tau /= units.GetScaleFactor<Units::ValueType::TIME>();
+  solver.transient.max_t /= units.GetScaleFactor<Units::ValueType::TIME>();
+  solver.transient.delta_t /= units.GetScaleFactor<Units::ValueType::TIME>();
 
   // Scale mesh vertices for correct nondimensionalization.
-  mesh::NondimensionalizeMesh(mesh, GetLengthScale());
+  mesh::NondimensionalizeMesh(mesh, units.GetMeshLengthRelativeScale());
 
   // Print some information.
   Mpi::Print(mesh.GetComm(),
              "\nCharacteristic length and time scales:\n L₀ = {:.3e} m, t₀ = {:.3e} ns\n",
-             Lc, tc);
+             units.GetScaleFactor<Units::ValueType::LENGTH>(),
+             units.GetScaleFactor<Units::ValueType::TIME>());
 }
-
-template <typename T>
-T IoData::DimensionalizeValue(IoData::ValueType type, T v) const
-{
-  // Characteristic reference magnetic field strength Hc² = 1 / (Zc * Lc²) A/m (with Ec =
-  // Hc Zc). Yields Pc = Hc² Zc Lc² = 1 W.
-  const T Hc = 1.0 / std::sqrt(electromagnetics::Z0_ * Lc * Lc);  // [A/m]
-  T sf = 1.0;
-  switch (type)
-  {
-    case ValueType::TIME:
-      sf = tc;  // [ns]
-      break;
-    case ValueType::FREQUENCY:
-      sf = 1.0 / (2.0 * M_PI * tc);  // [GHz/rad]
-      break;
-    case ValueType::LENGTH:
-      sf = Lc;  // [m]
-      break;
-    case ValueType::IMPEDANCE:
-      sf = electromagnetics::Z0_;  // [Ω]
-      break;
-    case ValueType::INDUCTANCE:
-      sf = electromagnetics::mu0_ * Lc;  // [H]
-      break;
-    case ValueType::CAPACITANCE:
-      sf = electromagnetics::epsilon0_ * Lc;  // [F]
-      break;
-    case ValueType::CONDUCTIVITY:
-      sf = 1.0 / (electromagnetics::Z0_ * Lc);  // [S/m]
-      break;
-    case ValueType::VOLTAGE:
-      sf = Hc * electromagnetics::Z0_ * Lc;  // [V]
-      break;
-    case ValueType::CURRENT:
-      sf = Hc * Lc;  // [A]
-      break;
-    case ValueType::POWER:
-      sf = Hc * Hc * electromagnetics::Z0_ * Lc * Lc;  // [W]
-      break;
-    case ValueType::ENERGY:
-      sf = Hc * Hc * electromagnetics::Z0_ * Lc * Lc * tc;  // [J]
-      break;
-    case ValueType::FIELD_E:
-      sf = Hc * electromagnetics::Z0_;  // [V/m]
-      break;
-    case ValueType::FIELD_D:
-      sf = electromagnetics::epsilon0_ * Hc * electromagnetics::Z0_;  // [C/m²]
-      break;
-    case ValueType::FIELD_H:
-      sf = Hc;  // [A/m]
-      break;
-    case ValueType::FIELD_B:
-      sf = electromagnetics::mu0_ * Hc;  // [Wb/m²]
-      break;
-  }
-  return v * sf;
-}
-
-template double IoData::DimensionalizeValue(IoData::ValueType, double) const;
 
 }  // namespace palace

@@ -21,14 +21,18 @@
     <ClInclude Include="fem\coefficient.hpp" />
     <ClInclude Include="fem\errorindicator.hpp" />
     <ClInclude Include="fem\fespace.hpp" />
+    <ClInclude Include="fem\gridfunction.hpp" />
     <ClInclude Include="fem\integrator.hpp" />
     <ClInclude Include="fem\interpolator.hpp" />
+    <ClInclude Include="fem\libceed\basis.hpp" />
+    <ClInclude Include="fem\libceed\ceed.hpp" />
     <ClInclude Include="fem\libceed\hash.hpp" />
-    <ClInclude Include="fem\libceed\integrator.hpp" />
+    <ClInclude Include="fem\libceed\libceed_coefficient.hpp" />
+    <ClInclude Include="fem\libceed\libceed_integrator.hpp" />
     <ClInclude Include="fem\libceed\operator.hpp" />
     <ClInclude Include="fem\libceed\restriction.hpp" />
-    <ClInclude Include="fem\libceed\utils.hpp" />
     <ClInclude Include="fem\lumpedelement.hpp" />
+    <ClInclude Include="fem\mesh.hpp" />
     <ClInclude Include="fem\multigrid.hpp" />
     <ClInclude Include="fem\qfunctions\curlcurlmass_qf.h" />
     <ClInclude Include="fem\qfunctions\curlcurl_qf.h" />
@@ -41,21 +45,24 @@
     <ClInclude Include="fem\qfunctions\hcurl_qf.h" />
     <ClInclude Include="fem\qfunctions\hdiv_qf.h" />
     <ClInclude Include="fem\qfunctions\mass_qf.h" />
-    <ClInclude Include="fem\qfunctions\utils_qf.h" />
     <ClInclude Include="fem\qfunctions\vecfemass_qf.h" />
     <ClInclude Include="linalg\amg.hpp" />
     <ClInclude Include="linalg\ams.hpp" />
     <ClInclude Include="linalg\chebyshev.hpp" />
+    <ClInclude Include="linalg\densematrix.hpp" />
     <ClInclude Include="linalg\distrelaxation.hpp" />
     <ClInclude Include="linalg\divfree.hpp" />
     <ClInclude Include="linalg\eps.hpp" />
     <ClInclude Include="linalg\errorestimator.hpp" />
+    <ClInclude Include="linalg\floquetcorrection.hpp" />
     <ClInclude Include="linalg\gmg.hpp" />
     <ClInclude Include="linalg\hcurl.hpp" />
+    <ClInclude Include="linalg\hypre.hpp" />
     <ClInclude Include="linalg\iterative.hpp" />
     <ClInclude Include="linalg\jacobi.hpp" />
     <ClInclude Include="linalg\ksp.hpp" />
     <ClInclude Include="linalg\mumps.hpp" />
+    <ClInclude Include="linalg\nleps.hpp" />
     <ClInclude Include="linalg\operator.hpp" />
     <ClInclude Include="linalg\orthog.hpp" />
     <ClInclude Include="linalg\petsc.hpp" />
@@ -71,9 +78,12 @@
     <ClInclude Include="models\laplaceoperator.hpp" />
     <ClInclude Include="models\lumpedportoperator.hpp" />
     <ClInclude Include="models\materialoperator.hpp" />
+    <ClInclude Include="models\portexcitations.hpp" />
     <ClInclude Include="models\postoperator.hpp" />
+    <ClInclude Include="models\postoperatorcsv.hpp" />
     <ClInclude Include="models\romoperator.hpp" />
     <ClInclude Include="models\spaceoperator.hpp" />
+    <ClInclude Include="models\strattonchu.hpp" />
     <ClInclude Include="models\surfaceconductivityoperator.hpp" />
     <ClInclude Include="models\surfacecurrentoperator.hpp" />
     <ClInclude Include="models\surfaceimpedanceoperator.hpp" />
@@ -83,6 +93,7 @@
     <ClInclude Include="utils\communication.hpp" />
     <ClInclude Include="utils\configfile.hpp" />
     <ClInclude Include="utils\constants.hpp" />
+    <ClInclude Include="utils\device.hpp" />
     <ClInclude Include="utils\diagnostic.hpp" />
     <ClInclude Include="utils\dorfler.hpp" />
     <ClInclude Include="utils\excitations.hpp" />
@@ -92,6 +103,7 @@
     <ClInclude Include="utils\meshio.hpp" />
     <ClInclude Include="utils\omp.hpp" />
     <ClInclude Include="utils\prettyprint.hpp" />
+    <ClInclude Include="utils\tablecsv.hpp" />
     <ClInclude Include="utils\timer.hpp" />
     <ClInclude Include="utils\zlib.hpp" />
   </ItemGroup>
@@ -106,8 +118,12 @@
     <ClCompile Include="fem\coefficient.cpp" />
     <ClCompile Include="fem\errorindicator.cpp" />
     <ClCompile Include="fem\fespace.cpp" />
+    <ClCompile Include="fem\gridfunction.cpp" />
     <ClCompile Include="fem\integrator.cpp" />
     <ClCompile Include="fem\interpolator.cpp" />
+    <ClCompile Include="fem\libceed\ceed.cpp" />
+    <ClCompile Include="fem\libceed\libceed_coefficient.cpp" />
+    <ClCompile Include="fem\libceed\libceed_integrator.cpp" />
     <ClCompile Include="fem\libceed\operator.cpp" />
     <ClCompile Include="fem\lumpedelement.cpp" />
     <ClCompile Include="fem\integ\curlcurl.cpp" />
@@ -123,20 +139,24 @@
     <ClCompile Include="fem\integ\vecfemass.cpp" />
     <ClCompile Include="fem\libceed\basis.cpp" />
     <ClCompile Include="fem\libceed\restriction.cpp" />
-    <ClCompile Include="fem\libceed\utils.cpp" />
+    <ClCompile Include="fem\mesh.cpp" />
     <ClCompile Include="linalg\amg.cpp" />
     <ClCompile Include="linalg\ams.cpp" />
     <ClCompile Include="linalg\arpack.cpp" />
     <ClCompile Include="linalg\chebyshev.cpp" />
+    <ClCompile Include="linalg\densematrix.cpp" />
     <ClCompile Include="linalg\distrelaxation.cpp" />
     <ClCompile Include="linalg\divfree.cpp" />
     <ClCompile Include="linalg\errorestimator.cpp" />
+    <ClCompile Include="linalg\floquetcorrection.cpp" />
     <ClCompile Include="linalg\gmg.cpp" />
     <ClCompile Include="linalg\hcurl.cpp" />
+    <ClCompile Include="linalg\hypre.cpp" />
     <ClCompile Include="linalg\jacobi.cpp" />
     <ClCompile Include="linalg\ksp.cpp" />
     <ClCompile Include="linalg\iterative.cpp" />
     <ClCompile Include="linalg\mumps.cpp" />
+    <ClCompile Include="linalg\nleps.cpp" />
     <ClCompile Include="linalg\operator.cpp">
       <ObjectFileName>$(IntDir)/linalg/operator.cpp.obj</ObjectFileName>
     </ClCompile>
@@ -152,9 +172,12 @@
     <ClCompile Include="models\laplaceoperator.cpp" />
     <ClCompile Include="models\lumpedportoperator.cpp" />
     <ClCompile Include="models\materialoperator.cpp" />
+    <ClCompile Include="models\portexcitations.cpp" />
     <ClCompile Include="models\postoperator.cpp" />
+    <ClCompile Include="models\postoperatorcsv.cpp" />
     <ClCompile Include="models\romoperator.cpp" />
     <ClCompile Include="models\spaceoperator.cpp" />
+    <ClCompile Include="models\strattonchu.cpp" />
     <ClCompile Include="models\surfaceconductivityoperator.cpp" />
     <ClCompile Include="models\surfacecurrentoperator.cpp" />
     <ClCompile Include="models\surfaceimpedanceoperator.cpp" />
@@ -162,10 +185,14 @@
     <ClCompile Include="models\timeoperator.cpp" />
     <ClCompile Include="models\waveportoperator.cpp" />
     <ClCompile Include="utils\configfile.cpp" />
+    <ClCompile Include="utils\device.cpp" />
     <ClCompile Include="utils\dorfler.cpp" />
     <ClCompile Include="utils\geodata.cpp" />
+    <ClCompile Include="utils\geodata_impl.cpp" />
     <ClCompile Include="utils\iodata.cpp" />
     <ClCompile Include="utils\meshio.cpp" />
+    <ClCompile Include="utils\omp.cpp" />
+    <ClCompile Include="utils\tablecsv.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -204,6 +231,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(Platform)\$(Configuration)\</OutDir>

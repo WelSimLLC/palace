@@ -9,9 +9,18 @@
     "Mesh": { "type": "string" },
     "L0": { "type": "number", "exclusiveMinimum": 0.0 },
     "Lc": { "type": "number", "exclusiveMinimum": 0.0 },
-    "Partition": { "type": "string" },
-    "ReorientTetMesh": { "type": "boolean" },
     "RemoveCurvature": { "type": "boolean" },
+    "MakeSimplex": { "type": "boolean" },
+    "MakeHexahedral": { "type": "boolean" },
+    "ReorderElements": { "type": "boolean" },
+    "CleanUnusedElements": { "type": "boolean" },
+    "CrackInternalBoundaryElements": { "type": "boolean" },
+    "RefineCrackElements": { "type": "boolean" },
+    "CrackDisplacementFactor": { "type": "number", "inclusiveMinimum": 0.0 },
+    "AddInterfaceBoundaryElements": { "type": "boolean" },
+    "ExportPrerefinedMesh": { "type": "boolean" },
+    "ReorientTetMesh": { "type": "boolean" },
+    "Partitioning": { "type": "string" },
     "Refinement":
     {
       "type": "object",
@@ -29,6 +38,7 @@
         "SaveAdaptIterations": {"type": "boolean"},
         "SaveAdaptMesh": {"type": "boolean"},
         "UniformLevels": { "type": "integer", "minimum": 0 },
+        "SerialUniformLevels": { "type": "integer", "minimum": 0 },
         "Boxes":
         {
           "type": "array",
@@ -37,33 +47,25 @@
           {
             "type": "object",
             "additionalProperties": false,
-            "required": ["Levels", "XLimits", "YLimits", "ZLimits"],
+            "required": ["Levels", "BoundingBoxMin", "BoundingBoxMax"],
             "properties":
             {
               "Levels": { "type": "integer", "minimum": 0 },
-              "XLimits":
+              "BoundingBoxMin":
               {
                 "type": "array",
-                "minItems": 2,
-                "maxItems": 2,
                 "additionalItems": false,
-                "items": { "type": "number" }
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3
               },
-              "YLimits":
+              "BoundingBoxMax":
               {
                 "type": "array",
-                "minItems": 2,
-                "maxItems": 2,
                 "additionalItems": false,
-                "items": { "type": "number" }
-              },
-              "ZLimits":
-              {
-                "type": "array",
-                "minItems": 2,
-                "maxItems": 2,
-                "additionalItems": false,
-                "items": { "type": "number" }
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3
               }
             }
           }
@@ -84,10 +86,10 @@
               "Center":
               {
                 "type": "array",
-                "minItems": 3,
-                "maxItems": 3,
                 "additionalItems": false,
-                "items": { "type": "number" }
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3
               }
             }
           }

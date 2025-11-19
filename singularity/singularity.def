@@ -13,6 +13,7 @@ From: rockylinux:9
 
 %environment
     if [[ -d /usr/lib64/mpich ]]; then
+        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64/mpich/lib"
         export PATH="$PATH:/usr/lib64/mpich/bin"
     fi
     export PATH="$PATH:/opt/palace/bin"
@@ -39,7 +40,7 @@ From: rockylinux:9
                    pkg-config python3 wget zlib
 
     # Install CMake (STRUMPACK requires >= 3.21)
-    CMAKE_VERSION=3.26.5
+    CMAKE_VERSION=3.31.0
     wget https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-linux-$(uname -m).sh
     /bin/bash cmake-$CMAKE_VERSION-* --skip-license --prefix=/usr
     rm -rf cmake-*
@@ -58,6 +59,7 @@ From: rockylinux:9
         cd .. && rm -rf mpich-*
     else
         dnf -y install mpich-devel
+        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64/mpich/lib"
         export PATH="$PATH:/usr/lib64/mpich/bin"
     fi
 
@@ -81,13 +83,15 @@ From: rockylinux:9
         -DBUILD_SHARED_LIBS:BOOL=ON \
         -DPALACE_WITH_64BIT_INT:BOOL=OFF \
         -DPALACE_WITH_OPENMP:BOOL=ON \
+        -DPALACE_WITH_CUDA:BOOL=OFF \
+        -DPALACE_WITH_HIP:BOOL=OFF \
         -DPALACE_WITH_SUPERLU:BOOL=ON \
         -DPALACE_WITH_STRUMPACK:BOOL=ON \
         -DPALACE_WITH_MUMPS:BOOL=ON \
         -DPALACE_WITH_SLEPC:BOOL=ON \
         -DPALACE_WITH_ARPACK:BOOL=ON \
         -DPALACE_WITH_LIBXSMM:BOOL=ON \
-        -DPALACE_WITH_MAGMA:BOOL=OFF \
+        -DPALACE_WITH_MAGMA:BOOL=ON \
         -DPALACE_WITH_GSLIB:BOOL=ON
     make -j"$(nproc)"
     cd .. && rm -rf palace-build

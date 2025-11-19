@@ -12,6 +12,7 @@
 namespace palace
 {
 
+template <typename VecType>
 class DivFreeSolver;
 
 //
@@ -51,21 +52,47 @@ public:
   EigenvalueSolver() = default;
   virtual ~EigenvalueSolver() = default;
 
-  // Set operators for the generalized eigenvalue problem or for the quadratic polynomial
-  // eigenvalue problem.
+  // Set operators for the generalized eigenvalue problem, quadratic polynomial
+  // eigenvalue problem, or nonlinear eigenvalue problem.
   virtual void SetOperators(const ComplexOperator &K, const ComplexOperator &M,
-                            ScaleType type) = 0;
+                            ScaleType type)
+  {
+    MFEM_ABORT("SetOperators not defined!");
+  }
+
   virtual void SetOperators(const ComplexOperator &K, const ComplexOperator &C,
-                            const ComplexOperator &M, ScaleType type) = 0;
+                            const ComplexOperator &M, ScaleType type)
+  {
+    MFEM_ABORT("SetOperators not defined!");
+  }
+
+  virtual void SetOperators(const ComplexOperator &K, const ComplexOperator &M,
+                            std::function<const ComplexOperator &(std::complex<double>)> A2,
+                            ScaleType type)
+  {
+    MFEM_ABORT("SetOperators not defined!");
+  }
+
+  virtual void SetExtraSystemMatrix(std::function<std::unique_ptr<ComplexOperator>(double)>)
+  {
+    MFEM_ABORT("SetExtraSystemMatrix not defined!");
+  }
+
+  virtual void SetPreconditionerUpdate(
+      std::function<std::unique_ptr<ComplexOperator>(
+          std::complex<double>, std::complex<double>, std::complex<double>, double)>)
+  {
+    MFEM_ABORT("SetPreconditionerUpdate not defined!");
+  }
 
   // For the linear generalized case, the linear solver should be configured to compute the
   // action of M⁻¹ (with no spectral transformation) or (K - σ M)⁻¹. For the quadratic
   // case, the linear solver should be configured to compute the action of M⁻¹ (with no
   // spectral transformation) or P(σ)⁻¹.
-  virtual void SetLinearSolver(const ComplexKspSolver &ksp) = 0;
+  virtual void SetLinearSolver(ComplexKspSolver &ksp) = 0;
 
   // Set the projection operator for enforcing the divergence-free constraint.
-  virtual void SetDivFreeProjector(const DivFreeSolver &divfree) = 0;
+  virtual void SetDivFreeProjector(const DivFreeSolver<ComplexVector> &divfree) = 0;
 
   // Set optional B matrix used for weighted inner products. This must be set explicitly
   // even for generalized problems, otherwise the identity will be used.
@@ -100,11 +127,17 @@ public:
   // Get the corresponding eigenvalue.
   virtual std::complex<double> GetEigenvalue(int i) const = 0;
 
-  // Get the corresponding eigenvector.
+  // Get the corresponding eigenvector. Eigenvectors are normalized such that ||x||₂ = 1,
+  // unless the B-matrix is set for weighted inner products.
   virtual void GetEigenvector(int i, ComplexVector &x) const = 0;
 
   // Get the corresponding eigenpair error.
   virtual double GetError(int i, ErrorType type) const = 0;
+
+  // Re-normalize the given number of eigenvectors, for example if the matrix B for weighted
+  // inner products has changed. This does not perform re-orthogonalization with respect to
+  // the new matrix, only normalization.
+  virtual void RescaleEigenvectors(int num_eig) = 0;
 };
 
 }  // namespace palace

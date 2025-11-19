@@ -7,19 +7,17 @@
 
 # Force build order
 set(LIBCEED_DEPENDENCIES)
-if(PALACE_BUILD_EXTERNAL_DEPS)
-  if(PALACE_WITH_LIBXSMM)
-    list(APPEND LIBCEED_DEPENDENCIES libxsmm)
-  endif()
-  if(PALACE_WITH_MAGMA)
-    list(APPEND LIBCEED_DEPENDENCIES magma)
-  endif()
+if(PALACE_WITH_LIBXSMM)
+  list(APPEND LIBCEED_DEPENDENCIES libxsmm)
+endif()
+if(PALACE_WITH_MAGMA)
+  list(APPEND LIBCEED_DEPENDENCIES magma)
 endif()
 
 # Note on recommended flags for libCEED (from Makefile, Spack):
 #   OPT: -O3 -g -march=native -ffp-contract=fast [-fopenmp-simd/-qopenmp-simd]
 include(CheckCCompilerFlag)
-set(LIBCEED_OPT_FLAGS "${CMAKE_C_FLAGS}")
+set(LIBCEED_OPT_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${BUILD_TYPE_UPPER}}")
 if(CMAKE_C_COMPILER_ID MATCHES "Intel|IntelLLVM")
   set(OMP_SIMD_FLAG -qopenmp-simd)
 else()
@@ -32,7 +30,7 @@ endif()
 
 # Silence some CUDA/HIP include file warnings
 if(PALACE_WITH_CUDA)
-  set(LIBCEED_OPT_FLAGS "${LIBCEED_OPT_FLAGS} -isystem ${CUDA_DIR}/include")
+  set(LIBCEED_OPT_FLAGS "${LIBCEED_OPT_FLAGS} -isystem ${CUDAToolkit_INCLUDE_DIRS}")
 endif()
 if(PALACE_WITH_HIP)
   set(LIBCEED_OPT_FLAGS "${LIBCEED_OPT_FLAGS} -isystem ${ROCM_DIR}/include")
@@ -49,7 +47,10 @@ endif()
 # Build libCEED (always as a shared library)
 set(LIBCEED_OPTIONS
   "prefix=${CMAKE_INSTALL_PREFIX}"
+  "LDFLAGS=${CMAKE_EXE_LINKER_FLAGS}"
   "CC=${CMAKE_C_COMPILER}"
+  "CXX=${CMAKE_CXX_COMPILER}"
+  "FC="
   "OPT=${LIBCEED_OPT_FLAGS}"
   "STATIC="
   "PEDANTIC=${LIBCEED_PEDANTIC}"
@@ -64,15 +65,9 @@ endif()
 
 # Configure libCEED backends (nvcc, hipcc flags are configured by libCEED)
 if(PALACE_WITH_LIBXSMM)
-  if(PALACE_BUILD_EXTERNAL_DEPS)
-    list(APPEND LIBCEED_OPTIONS
-      "XSMM_DIR=${CMAKE_INSTALL_PREFIX}"
-    )
-  else()
-    list(APPEND LIBCEED_OPTIONS
-      "XSMM_DIR=${LIBXSMM_DIR}"
-    )
-  endif()
+  list(APPEND LIBCEED_OPTIONS
+    "XSMM_DIR=${CMAKE_INSTALL_PREFIX}"
+  )
   # LIBXSMM can require linkage with BLAS for fallback
   if(NOT "${BLAS_LAPACK_LIBRARIES}" STREQUAL "")
     string(REPLACE "$<SEMICOLON>" " " LIBCEED_BLAS_LAPACK_LIBRARIES "${BLAS_LAPACK_LIBRARIES}")
@@ -83,7 +78,7 @@ if(PALACE_WITH_LIBXSMM)
 endif()
 if(PALACE_WITH_CUDA)
   list(APPEND LIBCEED_OPTIONS
-    "CUDA_DIR=${CUDA_DIR}"
+    "CUDA_DIR=${CUDAToolkit_LIBRARY_ROOT}"
   )
   if(NOT "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "")
     list(GET CMAKE_CUDA_ARCHITECTURES 0 LIBCEED_CUDA_ARCH)
@@ -104,25 +99,13 @@ if(PALACE_WITH_HIP)
   endif()
 endif()
 if(PALACE_WITH_MAGMA)
-  if(PALACE_BUILD_EXTERNAL_DEPS)
-    list(APPEND LIBCEED_OPTIONS
-      "MAGMA_DIR=${CMAKE_INSTALL_PREFIX}"
-    )
-  else()
-    list(APPEND LIBCEED_OPTIONS
-      "MAGMA_DIR=${MAGMA_DIR}"
-    )
-  endif()
+  list(APPEND LIBCEED_OPTIONS
+    "MAGMA_DIR=${CMAKE_INSTALL_PREFIX}"
+  )
 endif()
 
 string(REPLACE ";" "; " LIBCEED_OPTIONS_PRINT "${LIBCEED_OPTIONS}")
 message(STATUS "LIBCEED_OPTIONS: ${LIBCEED_OPTIONS_PRINT}")
-
-# Add OpenMP support to libCEED
-set(LIBCEED_PATCH_FILES
-  "${CMAKE_SOURCE_DIR}/extern/patch/libCEED/patch_gpu_restriction_dev.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/libCEED/patch_hcurl_hdiv_basis_cuda_hip.diff"
-)
 
 include(ExternalProject)
 ExternalProject_Add(libCEED
@@ -134,7 +117,6 @@ ExternalProject_Add(libCEED
   PREFIX            ${CMAKE_BINARY_DIR}/extern/libCEED-cmake
   BUILD_IN_SOURCE   TRUE
   UPDATE_COMMAND    ""
-  PATCH_COMMAND     git apply "${LIBCEED_PATCH_FILES}"
   CONFIGURE_COMMAND ""
   BUILD_COMMAND     ""
   INSTALL_COMMAND   ${CMAKE_MAKE_PROGRAM} ${LIBCEED_OPTIONS} install

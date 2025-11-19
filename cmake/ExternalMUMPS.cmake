@@ -6,7 +6,7 @@
 #
 
 # Force build order
-set(MUMPS_DEPENDENCIES scalapack parmetis)
+set(MUMPS_DEPENDENCIES scalapack parmetis metis)
 
 set(MUMPS_OPTIONS ${PALACE_SUPERBUILD_DEFAULT_ARGS})
 list(APPEND MUMPS_OPTIONS
@@ -14,16 +14,18 @@ list(APPEND MUMPS_OPTIONS
   "-DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}"
   "-DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}"
   "-DCMAKE_Fortran_FLAGS=${CMAKE_Fortran_FLAGS}"
-  "-Dparallel=ON"
-  "-Dopenmp=${PALACE_WITH_OPENMP}"
+  "-DMUMPS_parallel=ON"
+  "-DMUMPS_openmp=${PALACE_WITH_OPENMP}"
   "-Dintsize64=OFF"
   "-DBUILD_SINGLE=OFF"
   "-DBUILD_DOUBLE=ON"
   "-DBUILD_COMPLEX=OFF"
   "-DBUILD_COMPLEX16=OFF"
+  "-DMUMPS_BUILD_TESTING=OFF"
   "-Dmetis=ON"
   "-Dparmetis=ON"
   "-Dscotch=OFF"
+  "-DMUMPS_scalapack=ON"
   "-DPARMETIS_LIBRARY=${PARMETIS_LIBRARIES}"
   "-DMETIS_LIBRARY=${METIS_LIBRARIES}"
   "-DMETIS_INCLUDE_DIR=${CMAKE_INSTALL_PREFIX}/include"
@@ -52,6 +54,7 @@ ExternalProject_Add(mumps
   DEPENDS           ${MUMPS_DEPENDENCIES}
   GIT_REPOSITORY    ${EXTERN_MUMPS_URL}
   GIT_TAG           ${EXTERN_MUMPS_GIT_TAG}
+  GIT_SUBMODULES    "" # prevent downloading any submodules
   SOURCE_DIR        ${CMAKE_BINARY_DIR}/extern/mumps
   BINARY_DIR        ${CMAKE_BINARY_DIR}/extern/mumps-build
   INSTALL_DIR       ${CMAKE_INSTALL_PREFIX}

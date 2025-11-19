@@ -1,7 +1,5 @@
-<!---
-Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-SPDX-License-Identifier: Apache-2.0
---->
+<!--- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. --->
+<!--- SPDX-License-Identifier: Apache-2.0 --->
 # Palace: 3D Finite Element Solver for Computational Electromagnetics
 
 [![CI (Linux)](https://github.com/awslabs/palace/actions/workflows/build-and-test-linux.yml/badge.svg)](https://github.com/awslabs/palace/actions/workflows/build-and-test-linux.yml)
@@ -12,7 +10,8 @@ SPDX-License-Identifier: Apache-2.0
 *Palace*, for **PA**rallel **LA**rge-scale **C**omputational **E**lectromagnetics, is an
 open-source, parallel finite element code for full-wave 3D electromagnetic simulations in
 the frequency or time domain, using the
-[MFEM finite element discretization library](http://mfem.org).
+[MFEM finite element discretization library](http://mfem.org) and
+[libCEED library](https://github.com/CEED/libCEED) for efficient exascale discretizations.
 
 ## Key features
 
@@ -33,10 +32,14 @@ the frequency or time domain, using the
     refinement for simplex meshes.
   - Arbitrary high-order finite element spaces and curvilinear mesh support thanks to the
     [MFEM library](https://mfem.org/features/).
-  - Scalable algorithms for the solution of linear systems of equations, including geometric
-    multigrid (GMG), parallel sparse direct solvers, and algebraic multigrid
-    (AMG) preconditioners, for fast performance on platforms ranging from laptops to HPC
-    systems.
+  - Scalable algorithms for the solution of linear systems of equations, including
+    matrix-free $p$-multigrid utilizing
+    [high-order operator partial assembly](https://mfem.org/performance/), parallel sparse
+    direct solvers, and algebraic multigrid (AMG) preconditioners, for fast performance on
+    platforms ranging from laptops to HPC systems.
+  - Support for hardware acceleration using NVIDIA or AMD GPUs, including multi-GPU
+    parallelism, using pure CUDA and HIP code as well as [MAGMA](https://icl.utk.edu/magma/)
+    and other libraries.
 
 ## Getting started
 
@@ -55,11 +58,12 @@ connection is required.
 
 System requirements:
 
-  - CMake version 3.18.1 or later
+  - CMake version 3.21 or later
   - C++17 compatible C++ compiler
-  - C and (optionally) Fortran compilers for dependency builds
+  - C and Fortran (optional) compilers for dependency builds
   - MPI distribution
   - BLAS, LAPACK libraries
+  - CUDA Toolkit or ROCm installation (optional, for GPU support only)
 
 ## Documentation
 
@@ -68,8 +72,27 @@ System requirements:
 The documentation for *Palace* provides full instructions for building the solver and
 running electromagnetic simulations.
 
-To build a local version of the documentation, run `julia make.jl` from within the
-[`docs/`](./docs) directory.
+### Building a local copy of the documentation
+
+[Julia](https://julialang.org) with
+[Documenter](https://documenter.juliadocs.org/) is required to build a local
+version of the documentation. Obtain Julia following the [official
+instructions](https://julialang.org/install/) and install Documenter by
+instantiating the `docs` environment
+
+```sh
+julia --project=docs -e "using Pkg; Pkg.instantiate()"
+```
+
+Then, generate the documentation with `julia --project make.jl` from within the
+[`docs/`](./docs) directory. An HTTP server is needed to visualize the
+rendered documentation. The simple way is to start a server is with python:
+
+```sh
+cd docs/build && python -m http.server 8000
+```
+
+Then, navigate to `localhost:8000` with your browser.
 
 ## Examples
 
@@ -96,3 +119,7 @@ Computing (CQC). Please contact the development team at
 ## License
 
 This project is licensed under the [Apache-2.0 License](./LICENSE).
+
+See [THIRD-PARTY-LICENSES](./THIRD-PARTY-LICENSES) and
+[THIRD-PARTY-NOTICES](./THIRD-PARTY-NOTICES) for licenses and notices of
+third-party software in this repository.
