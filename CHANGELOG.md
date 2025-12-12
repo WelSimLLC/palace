@@ -1,7 +1,5 @@
-<!---
-Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-SPDX-License-Identifier: Apache-2.0
---->
+<!--- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. --->
+<!--- SPDX-License-Identifier: Apache-2.0 --->
 # Changelog
 
 > Note: *Palace* is under active initial development, pre-v1.0. Functionality and interfaces
@@ -13,6 +11,251 @@ The format of this changelog is based on
 
 ## In progress
 
+#### New Features
+
+  - Added support for nonlinear eigenvalue problems arising from frequency-dependent
+    boundary conditions. Two nonlinear eigensolvers are now available and can be specified
+    by setting the `config["Solver"]["Eigenmode"]["NonlinearType"]` option to `"Hybrid"`
+    (default) or `"SLP"`. The nonlinear eigensolver will automatically be used if
+    frequency-dependent boundary conditions are used. [PR
+    467](https://github.com/awslabs/palace/pull/467).
+  - Added support for extraction of electric fields in the radiative zone.
+    Consult the
+    [documentation](https://awslabs.github.io/palace/dev/features/farfield) for
+    additional information. [PR
+    449](https://github.com/awslabs/palace/pull/449).
+  - Added support for more granular tests and for computing the testing coverage.
+    Consult the
+    [documentation](https://awslabs.github.io/palace/dev/developer/testing/) for
+    additional information. [PR
+    398](https://github.com/awslabs/palace/pull/398), [PR
+    480](https://github.com/awslabs/palace/pull/480).
+  - Added option to export field solutions as MFEM grid functions to visualize with
+    [GLVis](https://glvis.org). Output formats can be specified in `config["Problem"]["OutputFormats"]`.
+    [PR 518](https://github.com/awslabs/palace/pull/518).
+  - Added an option to drop small entries (below machine epsilon) from the matrix used in the sparse
+    direct solver. This can be specified with `config["Solver"]["Linear"]["DropSmallEntries"]`.
+    [PR 476](https://github.com/awslabs/palace/pull/476).
+
+#### Interface Changes
+
+  - `config["Boundaries"]["Periodic"]` is now a dictionary where all periodic boundary
+    pairs, built into the mesh file or not, should be specified in
+    `config["Boundaries"]["Periodic"]["BoundaryPairs"]` and a single global Floquet wave
+    vector can be specified in `config["Boundaries"]["Periodic"]["FloquetWaveVector"]`. [PR
+    471](https://github.com/awslabs/palace/pull/471).
+  - Changed Paraview and GLVis output fields from nondimensional to SI units
+    [PR 532](https://github.com/awslabs/palace/pull/532).
+  - The name of the unit test executable is now `palace-unit-tests` (instead of `unit-tests`)
+    [PR 549](https://github.com/awslabs/palace/pull/549).
+
+#### Bug Fixes
+
+  - Changed wave port eigenproblem shift and sorting to fix an issue with the mode ordering.
+    The first mode now has the largest propagation constant, closest to the TEM limit, and
+    subsequent modes are ordered by decreasing propagation constant. [PR
+    448](https://github.com/awslabs/palace/pull/448).
+  - Fixed an issue where Gmsh meshes with built-in periodicity (specified in the mesh file)
+    were failing. [PR
+    471](https://github.com/awslabs/palace/pull/471).
+  - Fixed bug where a mesh from a previous nonconformal adaptation could not be loaded to
+    use in a non-amr simulation. [PR
+    497](https://github.com/awslabs/palace/pull/497).
+  - Fixed bug where `"CrackInternalBoundaryElements"` would result in incorrect results for
+    some lumped port boundary conditions. [PR
+    505](https://github.com/awslabs/palace/pull/505).
+  - Changed the sign of the Floquet phase factor from $\exp(+ik\cdot x)$ to $\exp(-ik\cdot x)$.
+    [PR 510](https://github.com/awslabs/palace/pull/510) and [PR 526](https://github.com/awslabs/palace/pull/526).
+  - Update EM constants to CODATA Recommended Values of the Fundamental Physical Constants 2022
+    [PR 525](https://github.com/awslabs/palace/pull/525).
+  - Scaled Rs/Ls/Cs of impedance boundary conditions affected by mesh cracking, fixing bug where
+    `"CrackInternalBoundaryElements"` would lead to incorrect results. [PR 544](https://github.com/awslabs/palace/pull/544).
+
+## [0.14.0] - 2025-08-20
+
+  - Added `--version` command line flag for displaying Palace version information.
+  - Fixed a small regression bug for boundary postprocessing when specifying
+    `"Side": "LargerRefractiveIndex"`, introduced as part of v0.13.0.
+  - Added an improvement to numeric wave ports to avoid targeting evanescent modes at
+    higher operating frequencies. Also finite conductivity boundaries
+    (`config["Boundaries"]["Conductivity"]`) are automatically marked as PEC for the wave
+    port mode solve (previously these were marked as PMC unless specified under
+    `"WavePortPEC"`).
+  - Fixed a bug in divergence-free projection for problems without essential or mixed
+    boundary conditions.
+  - Added `"MakeSimplex"` and `"MakeHexahedral"` mesh options to convert an input mesh to
+    all tetrahedra or all hexahedra. Also adds `"SerialUniformLevels"` option to
+    `config["Model"]["Refinement"]` for testing or debugging.
+  - Added `config["Model"]["CrackInternalBoundaryElements"]` which will separate or "crack" the mesh
+    along all internal boundaries. This improves the performance of error estimation and AMR
+    as the recovered smooth fields do not enforce additional erroneous continuity at
+    internal boundaries. This will change the default behaviour in the case of internal
+    impedance boundary conditions, and can be disabled by setting this option to false.
+  - Added support for exact periodic boundary conditions, these can be specified as part of
+    the mesh file (where supported by the format) or by specification of `"DonorAttributes"`
+    and `"ReceiverAttributes"` in `config["Boundaries"]["Periodic"]` which will attempt to
+    match the mesh on the boundaries specified by the donor and receiver attributes. This is
+    only possible the mesh on the donor and receiver match exactly, non-matching meshes are
+    not supported.
+  - Exposed configuration linear solver and eigen solver options for the wave port
+    subproblem. These can now be specified as part of the `config["Boundaries"]["WavePort"]`
+    configuration. The defaults align with the previously hardcoded values.
+  - Nonconformal adaptation is now supported for WavePort boundary conditions. This was
+    achieved through a patch applied to MFEM to support `mfem::ParSubMesh` on external
+    nonconformal surface subdomains.
+  - Added adaptive time-stepping capability for transient simulations. The new ODE integrators
+    rely on the SUNDIALS library and can be specified by setting the
+    `config["Solver"]["Transient"]["Type"]` option to `"CVODE"` or `"ARKODE"`.
+  - Added an option to use the complex-valued system matrix for the coarse level solve (sparse
+    direct solve) instead of the real-valued approximation. This can be specified with
+    `config["Solver"]["Linear"]["ComplexCoarseSolve"]`.
+  - Fix bug in London equation implementation where a curl-curl term was added to the
+    stiffness operator instead of a mass term.
+  - Added support for Floquet periodic boundary conditions with phase-delay constraints.
+    The Floquet wave vector can be specified along with periodic boundaries in the
+    `config["Boundaries"]["Periodic"]` configuration.
+  - Fixed bug where the default `config["Model"]["CrackDisplacementFactor"]` would cause
+    lumped port discovery to fail by reducing default from `1e-3` to `1e-12`.
+  - Fixed bug in Nastran mesh reader where carriage returns (`\r`) in the mesh file could
+    cause a failure to read the mesh.
+  - Changed post-processing, so that appropriate measurements are always written to disk as CSV
+    files. This is a breaking change, since users are now required to specify a valid output
+    folder in `config["Problem"]["Output"]`. Previously an empty string `""` would suppress file
+    printing. ParaView printing is still controlled and suppressed by the `"Save"` or `"SaveStep"`
+    options in the `config["Solver"][...]`.
+  - Changed measurement and printing during post-processing substantially. This change is not
+    user-facing, but will enable future multi-excitation support. All measurements are now
+    performed as part of the `PostOperator` class, which is templated on solver type. The public
+    interface of the `PostOperator` has been simplified: measurements can no longer be called
+    individually, but are grouped in a `MeasurePrintAll` function. The actual printing of
+    measurements has moved out of individual solvers and is orchestrated by the `PostOperatorCSV`
+    class. Other helper classes include a small `Table` class (for data storage and formatting)
+    and a light wrapper `TableWithCSVFile` (with file interaction).
+  - Changed unit conversion interface: this was moved out of `IOData` into a separate `Units` class.
+  - Changed csv output to print more digits.
+  - Changed boundary indexing to enforce that the value of `Index` is unique between `LumpedPort`,
+    `WavePort`, `SurfaceCurrent` and `Terminal`. This is a breaking change — e.g. currently a lumped
+    port and a wave port could share an index.
+  - Added multi-excitation support. `Excitation` in `LumpedPort` and `WavePort` boundary conditions
+    can now be specified either as bools or excitation integers. Allow driven simulations to have
+    multiple excitations indices in same configuration file to be simulated consecutively during the
+    same Palace run. The measurement output of multiple excitations is printed to the same csv files
+    with distinguish columns being post-indexed by the excitation index.
+  - Changed `RomOperator` to split out rational interpolation component into the separate
+    `MinimalRationalInterpolation` class to support multiple excitations. The MRI is unique to each
+    excitation, but the PROM is shared between excitations.
+  - Added `PortExcitations` to manage excitation pattern and print it to json metadata.
+  - Update spack configuration to address `0.12` API breakage between libxsmm and libCEED.
+  - Support spack vended libCEED and GSLIB builds.
+  - Fix bug where `MakeSimplex` would fail for higher order meshes.
+  - Fix bug in STRUMPACK build where dependency SCALAPACK library install directory could
+    change based on build environment.
+  - Introduce `"Samples"` mechanism for driven simulation, which allows for specifying a
+    range of sample frequencies by combining `"Linear"`, `"Log"` and `"Point"`
+    specifications. These are joined together effectively allowing for variable resolution
+    sampling (for examples a coarse sampling supported by a fine sampling in a subset
+    region). This is in addition to the prior existing `"MinFreq"`, `"MaxFreq"`,
+    `"FreqStep"` interface which is now implicitly converted to a `"Linear"` sample scheme
+    internally.
+  - Introduce `"Save"` keyword for `"Driven"` simulation type, which will save specific
+    frequency choices as opposed to the existing (and maintained `"SaveStep"` based on a
+    regular sampling). Only frequencies contained within the set of `"Samples"` are
+    supported, as no interpolation is performed.
+  - Fix bugs in post processing where `E_cap`, `E_ind`, and `mode_port_kappa` and other
+    dependent quantities were not dimensionalized correctly.
+  - Refactor `PostOperator` usage of `Measurement` to be entirely non-dimensional, until
+    `PostOperatorCSV` which dimensionalizes all measurements before writing to file. Reduces
+    the risk of mixed unit bugs throughout `PostOperator`.
+  - Fix bug in using `"MakeSimplex"` which would cause undefined behaviour for higher order
+    meshes.
+  - Fix bug when combining OpenMP and GPU builds in reduction operations over `Vector`.
+  - Fix race condition that would affect OpenMP parallelism with periodic boundaries (exact
+    and Floquet).
+  - Fix race condition in `mfem::DenseTensor::operator()` with OpenMP, due to class member
+    variable access.
+  - Fix race condition in `DofToQuad` methods within mfem.
+  - Normalize eigenmodes so their mean phase is a positive real number.
+  - Added `scnlib` as a dependency to Palace.
+  - Added parsing ability of existing csv files into the `Table` class. Fix `"Restart"`
+    behaviour with the multi-excitation feature of driven solver.
+
+## [0.13.0] - 2024-05-20
+
+  - Changed default value of `config["Solver"]["PartialAssemblyOrder"]` in order to activate
+    operator partial assembly by default for all operators in all simulation types.
+  - Changed the normalization of computed eigenmodes for consistency across different domain
+    decompositions. Eigenvectors are now normalized with respect to the mass matrix for unit
+    domain electric field energy.
+  - Added documentation for various timer categories and improved timing breakdown of
+    various sections of a simulation.
+  - Changed mesh files for the cavity and CPW examples, including prism, hexahedral, and
+    tetrahedral meshes for the cylindrical cavity and correcting the wave port dimensions
+    for the coplanar wave guide.
+  - Fixed a few bugs and issues in the implementation of numeric wave ports for driven
+    simulations.
+  - Added GPU support for *Palace* via its dependencies, and added the
+    `config["Solver"]["Device"]` and `config["Solver"]["Backend"]` options for runtime
+    configuration of the MFEM device (`"CPU"` or `"GPU"`) and libCEED backend, with suitable
+    defaults for users.
+  - Added a new section to the documentation on
+    [Parallelism and GPU support](https://awslabs.github.io/palace/dev/guide/parallelism/).
+  - Removed use of `mfem::SparseMatrix` and replaced with HYPRE's `hypre_CSRMatrix` when
+    needed for full assembly, wrapped as `palace::hypre::HypreCSRMatrix`.
+  - Added `"Active"` configuration file parameter for lumped and wave port boundaries to
+    disable the associated boundary condition and only use the surface for postprocessing.
+  - Changed the smooth flux space for the electrostatic error estimator to fix performance
+    on problems with material interfaces.
+  - Fixed error estimation bug affecting time-dependent simulation types (driven, transient,
+    eigenmode) where the recovery of the electric flux density also needs to be taken into
+    account in addition to the magnetic field.
+  - Fixed a bug related to mesh cleaning for unspecified domains and mesh partitioning.
+  - Change computation of domain energy postprocessing for electrostatic and magnetostatic
+    simulation types in order to improve performance.
+  - Fixed a bug when computing the energy associated with lumped elements with more than
+    one nonzero R, L, or C. This also affects the inductive EPR for lumped inductors with
+    and associated parallel capacitance.
+  - Fixed a bug for coaxial lumped ports which led to incorrect extraction of the geometric
+    parameters, especially when coarsely-meshed or non-axis-aligned.
+  - Added boundary postprocessing functionality for surface flux including electric,
+    magnetic, and power given by the Poynting vector. This results in some breaking changes
+    to the configuration file interface, see
+    `config["Boundaries"]["Postprocessing"]["SurfaceFlux"]` and
+    `config["Boundaries"]["Postprocessing"]["Dielectric"]`. In addition, related
+    configuration file keyword changes to for consistency were made to
+    `config["Domains"]["Postprocessing"]["Probe"]` and
+    `config["Model"]["Refinement"]["Boxes"]`.
+  - Fixed a bug in MFEM for nonconformal AMR meshes with internal boundaries affecting
+    non-homogeneous Dirichlet boundary conditions for electrostatic simulations (see
+    [#236](https://github.com/awslabs/palace/pull/236)).
+
+## [0.12.0] - 2023-12-21
+
+  - Added support for operator partial assembly for high-order finite element spaces based
+    on libCEED for mixed and non-tensor product element meshes. This option is disabled by
+    default, but can be activated using `config["Solver"]["PartialAssemblyOrder"]` set to
+    some number less than or equal to `"Order"`.
+  - Added flux-based error estimation, reported in `error-estimate.csv`. This computes the
+    difference between the numerical gradient (electrostatics) or curl (otherwise) of the
+    solution, and a smoother approximation obtained through a global mass matrix inversion.
+    The results are reported in `error-estimates.csv` within the `"Output"` folder.
+  - Added Adaptive Mesh Refinement (AMR), specified in the `config["Model"]["Refinement"]`,
+    for all problem types aside from transient. To enable AMR, a user must specify
+    `"MaxIts"`, while all other options have reasonable defaults. Nonconformal (all mesh
+    types) and conformal (simplex meshes) refinement are supported.
+  - Added support for non-axis-aligned lumped ports and current sources. Key words `"X"`,
+    `"Y"`, `"Z"` and `"R"`, with optional prefix `"+"` or `"-"` still work, but now
+    directions can be specified as vectors with 3 components. Users will be warned, and
+    ultimately errored, if the specified directions do not agree with axis directions
+    discovered from the geometry.
+  - Added output of lumped port voltage and current for eigenmode simulations.
+  - Added dimensionalized output for energies, voltages, currents, and field values based on
+    a choice of the characteristic magnetic field strength used for nondimensionalization.
+  - Added output of electric and magnetic field energies and participation ratios in regions
+    of the domain, specified with `config["Domains"]["Postprocessing"]["Energy"]` and
+    written to `domain-E.csv`. This replaces
+    `config["Domains"]["Postprocessing"]["Dielectric"]` and `domain-Q.csv`.
+  - Added improved `Timer` and `BlockTimer` classes with more timing categories for
+    reporting simulation runtime.
   - Changed implementation of complex-valued linear algebra to use new `ComplexVector` and
     `ComplexOperator` types, which are based on the underlying `mfem::Vector` and
     `mfem::Operator` classes, instead of PETSc. PETSc is now fully optional and only
@@ -24,41 +267,14 @@ The format of this changelog is based on
   - Changed implementation of numeric wave ports to use MFEM's `SubMesh` functionality. As
     of [#3379](https://github.com/mfem/mfem/pull/3379) in MFEM, this has full ND and RT
     basis support. For now, support for nonconforming mesh boundaries is limited.
-  - Added support for operator partial assembly for high-order finite element spaces based
-    on libCEED for non-tensor product element meshes. This option is disabled by default,
-    but can be activated using `config["Solver"]["PartialAssemblyOrder"]` set to some number
-    less than or equal to `"Order"`.
-  - Added `config["Solver"]["Device"]` and `config["Solver"]["Backend"]` options for runtime
-    configuration of the MFEM device (CPU or GPU) and corresponding libCEED backend, with
-    suitable defaults for users.
-  - Added support for non axis aligned lumped ports and current sources. Key words `"X"`,
-    `"Y"`, `"Z"` and `"R"`, with optional prefix `"+"` or `"-"` still work, but now
-    directions can be specified as vectors with 3 components. Users will be warned, and
-    ultimately errored, if the specified directions do not agree with axis directions
-    discovered from the geometry.
-  - Added flux-based error estimation, reported in `error-estimate.csv`. This computes the
-    difference between the numerical gradient (electrostatics) or curl (otherwise) of the
-    solution, and a smoother approximation obtained through a global mass matrix inversion.
-    The results are reported in `error-estimates.csv` within the `"Output"` folder.
-  - Added Adaptive Mesh Refinement (AMR), specified in the `config["Model"]["Refinement"]`,
-    for all problem types aside from transient. To enable AMR, a user must specify
-    `"MaxIts"`, while all other options have reasonable defaults. Nonconformal(all mesh
-    types) and conformal (simplex meshes) refinement are supported.
-  - Added output of lumped port voltage and current for eigenmode simulations.
-  - Added dimensionalized output for energies, voltages, currents, and field values based on
-    a choice of the characteristic magnetic field strength used for nondimensionalization.
-  - Fixed bugs for simulations using tetrahedral meshes associated with unexpected mesh
-    toplogy changes during parallel mesh construction.
-  - Added improved `Timer` and `BlockTimer` classes with more timing categories for
-    reporting simulation runtime.
-  - Added build dependencies on [libCEED](https://github.com/CEED/libCEED) and
-    [LIBXSMM](https://github.com/libxsmm/libxsmm) to support operator partial assembly (CPU-
-    based for now).
+  - Added build dependencies on [libCEED](https://github.com/CEED/libCEED), including
+    [LIBXSMM](https://github.com/libxsmm/libxsmm) and [MAGMA](https://icl.utk.edu/magma/)
+    to support CPU- and GPU-based operator partial assembly.
   - Added unit test framework for all integrators based on
     [Catch2](https://github.com/catchorg/Catch2), which also includes some automated
     benchmarking capabilities for operator assembly and application.
   - Added improved OpenMP support in `palace` wrapper script and CI tests.
-  - Added Apptainer/Singularity container build definition for Palace.
+  - Added Apptainer/Singularity container build definition for *Palace*.
   - Fixed bugs related to thread-safety for OpenMP builds and parallel tetrahedral meshes in
     the upstream MFEM library.
 
@@ -71,7 +287,7 @@ The format of this changelog is based on
     dependencies relying instead directly on CMake's ExternalProject, patch GSLIB dependency
     for shared library builds, add CI tests with ARPACK-NG instead of SLEPc, update all
     dependency versions including MFEM to incorporate bug fixes and improvements. This
-    affects the Spack package recipe, so a new recipe is distributed as part of Palace in
+    affects the Spack package recipe, so a new recipe is distributed as part of *Palace* in
     in `spack/` which will keep compatibility with `main` while changes are upstreamed to
     the built-in Spack repository.
   - Added a basic Makefile with some useful targets for development.

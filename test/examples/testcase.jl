@@ -5,6 +5,8 @@ using Test
 using CSV
 using DataFrames
 
+# custom_tests is a dictionary that maps filenames to functions of the signature
+# (new_data, ref_data) -> None, where arbitrary tests can be implemented
 function testcase(
     testdir,
     testconfig,
@@ -14,7 +16,11 @@ function testcase(
     rtol=1.0e-6,
     atol=1.0e-18,
     excluded_columns=[],
-    skip_rowcount=false
+    custom_tests=Dict(),
+    paraview_fields=true,
+    gridfunction_fields=false,
+    skip_rowcount=false,
+    generate_data=true
 )
     if isempty(testdir)
         @info "$testdir/ is empty, skipping tests"
@@ -27,35 +33,37 @@ function testcase(
     postprodir    = joinpath(exampledir, "postpro", testpostpro)
     logdir        = joinpath(exampledir, "log")
 
-    # Cleanup
-    rm(postprodir; force=true, recursive=true)
-    rm(logdir; force=true, recursive=true)
-    mkdir(logdir)
     cd(exampledir)
+    if generate_data
+        # Cleanup
+        rm(postprodir; force=true, recursive=true)
+        rm(logdir; force=true, recursive=true)
+        mkdir(logdir)
 
-    @testset "Simulation" begin
-        # Run the example simulation
-        logfile = "log.out"
-        errfile = "err.out"
-        proc = run(
-            pipeline(
-                ignorestatus(`$palace -np $np $testconfig`);
-                stdout=joinpath(logdir, logfile),
-                stderr=joinpath(logdir, errfile)
+        @testset "Simulation" begin
+            # Run the example simulation
+            logfile = "log.out"
+            errfile = "err.out"
+            proc = run(
+                pipeline(
+                    ignorestatus(`$palace -np $np $testconfig`);
+                    stdout=joinpath(logdir, logfile),
+                    stderr=joinpath(logdir, errfile)
+                )
             )
-        )
-        if proc.exitcode != 0
-            @warn "Simulation exited with a nonzero exit code"
-            if isfile(joinpath(exampledir, logdir, logfile))
-                @warn "Contents of stdout:"
-                println(String(read(joinpath(exampledir, logdir, logfile))))
+            if proc.exitcode != 0
+                @warn "Simulation exited with a nonzero exit code"
+                if isfile(joinpath(exampledir, logdir, logfile))
+                    @warn "Contents of stdout:"
+                    println(String(read(joinpath(exampledir, logdir, logfile))))
+                end
+                if isfile(joinpath(exampledir, logdir, errfile))
+                    @warn "Contents of stderr:"
+                    println(String(read(joinpath(exampledir, logdir, errfile))))
+                end
             end
-            if isfile(joinpath(exampledir, logdir, errfile))
-                @warn "Contents of stderr:"
-                println(String(read(joinpath(exampledir, logdir, errfile))))
-            end
+            @test proc.exitcode == 0
         end
-        @test proc.exitcode == 0
     end
 
     @testset "Results" begin
@@ -64,16 +72,42 @@ function testcase(
         (~, dirs, files) = first(walkdir(postprodir))
         (~, ~, filesref) = first(walkdir(refpostprodir))
         metafiles = filter(x -> last(splitext(x)) != ".csv", files)
-        @test length(dirs) == 1 && first(dirs) == "paraview"
-        @test length(metafiles) == 1 && first(metafiles) == "palace.json"
-        @test length(filter(x -> last(splitext(x)) == ".csv", files)) == length(filesref)
+        if (paraview_fields && gridfunction_fields)
+            @test length(dirs) == 2 && "paraview" in dirs && "gridfunction" in dirs ||
+                  (@show dirs; false)
+        elseif (paraview_fields)
+            @test length(dirs) == 1 && first(dirs) == "paraview" || (@show dirs; false)
+        elseif (gridfunction_fields)
+            @test length(dirs) == 1 && first(dirs) == "gridfunction" || (@show dirs; false)
+        end
+        @test length(metafiles) == 1 && first(metafiles) == "palace.json" ||
+              (@show metafiles; false)
+        @test length(filter(x -> last(splitext(x)) == ".csv", files)) == length(filesref) ||
+              (@show filesref; false)
+
+        # Helper to extract the stdout and stderr files and dump their contents.
+        # Useful when debugging a failure
+        function logdump(data...)
+            @show data
+            logfile = "log.out"
+            errfile = "err.out"
+            if isfile(joinpath(exampledir, logdir, logfile))
+                @warn "Contents of stdout:"
+                println(String(read(joinpath(exampledir, logdir, logfile))))
+            end
+            if isfile(joinpath(exampledir, logdir, errfile))
+                @warn "Contents of stderr:"
+                println(String(read(joinpath(exampledir, logdir, errfile))))
+            end
+            return false
+        end
 
         # Test the simulation outputs
         for file in filesref
             data    = CSV.File(joinpath(postprodir, file); header=1) |> DataFrame
             dataref = CSV.File(joinpath(refpostprodir, file); header=1) |> DataFrame
             if !skip_rowcount
-                @test nrow(data) == nrow(dataref)
+                @test nrow(data) == nrow(dataref) || logdump(data, dataref)
             end
             data = data[1:min(nrow(data), nrow(dataref)), :]
 
@@ -86,20 +120,25 @@ function testcase(
             rename!(data, strip.(names(data)))
             rename!(dataref, strip.(names(dataref)))
 
-            @test names(data) == names(dataref)
-            test = isapprox.(data, dataref; rtol=rtol, atol=atol)
-            for (row, rowdataref, rowdata) in
-                zip(eachrow(test), eachrow(dataref), eachrow(data))
-                for (rowcol, rowcoldataref, rowcoldata) in
-                    zip(pairs(row), pairs(rowdataref), pairs(rowdata))
-                    if !last(rowcol)
-                        @warn string(
-                            "Regression test error at ",
-                            "row $(rownumber(row)), column $(strip(string(first(rowcol)))): ",
-                            "$(last(rowcoldataref)) ≉ $(last(rowcoldata))"
-                        )
+            @test names(data) == names(dataref) || logdump(names(data), names(dataref))
+
+            if file in keys(custom_tests)
+                custom_tests[file](data, dataref)
+            else
+                test = isapprox.(data, dataref; rtol=rtol, atol=atol)
+                for (row, rowdataref, rowdata) in
+                    zip(eachrow(test), eachrow(dataref), eachrow(data))
+                    for (rowcol, rowcoldataref, rowcoldata) in
+                        zip(pairs(row), pairs(rowdataref), pairs(rowdata))
+                        if !last(rowcol)
+                            @warn string(
+                                "Regression test error at ",
+                                "row $(rownumber(row)), column $(strip(string(first(rowcol)))): ",
+                                "$(last(rowcoldataref)) ≉ $(last(rowcoldata))"
+                            )
+                        end
+                        @test last(rowcol)
                     end
-                    @test last(rowcol)
                 end
             end
         end

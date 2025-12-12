@@ -15,6 +15,7 @@ Options:
   -np, --np NUM_PROCS              How many MPI processes to use, default is 1
   --julia COMMAND                  Executable command for julia
   --palace COMMAND                 Executable command for palace
+  -e, --example <EXAMPLE_NAME>     Run a specified example (may be repeated)
 "
 }
 
@@ -23,6 +24,7 @@ DRY_RUN=""
 NUM_PROCS=""
 JULIA="julia"
 PALACE="palace"
+EXAMPLE_LIST=""
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -47,6 +49,11 @@ while [[ $# -gt 0 ]]; do
         ;;
         --palace)
         PALACE="$2"
+        shift
+        shift
+        ;;
+        -e|--example)
+        EXAMPLE_LIST="${EXAMPLE_LIST:+$EXAMPLE_LIST$'\n'}$2"
         shift
         shift
         ;;
@@ -82,28 +89,50 @@ fi
 
 # Configure tests (use defaults set by runtests.jl otherwise)
 if [[ -n "$NUM_PROCS" ]]; then
-	export NUM_PROC_TEST=$NUM_PROCS
+    export NUM_PROC_TEST=$NUM_PROCS
 fi
 if [[ -n "$PALACE" ]]; then
-	export PALACE_TEST=$PALACE
+    export PALACE_TEST=$PALACE
 fi
 
-TEST_DIRS=(
-    "spheres"
-    "rings"
-    "cavity/pec"
-    "cavity/impedance"
-    "coaxial/open"
-    "coaxial/matched"
-    "cpw/lumped_uniform"
-    "cpw/wave_uniform"
-    "cpw/lumped_adaptive"
-    "cpw/wave_adaptive"
+TEST_DIRS=$(cat << EOF
+spheres
+rings
+antenna
+cylinder/cavity_pec
+cylinder/cavity_impedance
+cylinder/waveguide
+cylinder/floquet
+cylinder/driven_wave
+coaxial/open
+coaxial/matched
+cpw/lumped_uniform
+cpw/wave_uniform
+cpw/lumped_adaptive
+cpw/wave_adaptive
+cpw/lumped_eigen
+cpw/wave_eigen
+adapter/hybrid
+adapter/slp
+EOF
 )
-for TEST_DIR in "${TEST_DIRS[@]}"; do
+if [[ -n "$EXAMPLE_LIST" ]]; then
+    TEST_DIRS_TMP=""
+    for EXAMPLE in $EXAMPLE_LIST; do
+        TEST_DIR=$(echo "$TEST_DIRS" | grep -i $EXAMPLE)
+        TEST_DIRS_TMP="${TEST_DIRS_TMP:+$TEST_DIRS_TMP$'\n'}$TEST_DIR"
+    done
+    TEST_DIRS=$TEST_DIRS_TMP
+fi
+if [[ -z "$TEST_DIRS" ]]; then
+    echo "Error: Empty example list"
+    exit 1
+fi
+
+for TEST_DIR in $TEST_DIRS; do
     # Run test case
     export TEST_CASES=$TEST_DIR
-    $JULIA $SCRIPT_DIR/runtests.jl
+    $JULIA --project=$SCRIPT_DIR $SCRIPT_DIR/runtests.jl
     if [[ -n "$DRY_RUN" ]]; then
         continue
     fi
@@ -113,6 +142,7 @@ for TEST_DIR in "${TEST_DIRS[@]}"; do
     POSTPRO=$(echo $TEST_DIR | awk -F/ '{print $2}')
     EXAMPLE_DIR=$SCRIPT_DIR/../../examples/$TEST/postpro/$POSTPRO
     REF_DIR=$SCRIPT_DIR/ref/$TEST/$POSTPRO
-    rm -f $REF_DIR/*.csv
+    rm -rf $REF_DIR
+    mkdir -p $REF_DIR
     cp $EXAMPLE_DIR/*.csv $REF_DIR
 done

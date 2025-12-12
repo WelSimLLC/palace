@@ -6,9 +6,9 @@
 #
 
 # Force build order
-set(PALACE_DEPENDENCIES mfem libCEED)
+set(PALACE_DEPENDENCIES mfem)
 if(PALACE_BUILD_EXTERNAL_DEPS)
-  list(APPEND PALACE_DEPENDENCIES json fmt eigen)
+  list(APPEND PALACE_DEPENDENCIES libCEED json fmt eigen scn)
   if(PALACE_WITH_SLEPC)
     list(APPEND PALACE_DEPENDENCIES slepc)
   endif()
@@ -26,6 +26,9 @@ list(APPEND PALACE_OPTIONS
   "-DPALACE_WITH_ARPACK=${PALACE_WITH_ARPACK}"
   "-DANALYZE_SOURCES_CLANG_TIDY=${ANALYZE_SOURCES_CLANG_TIDY}"
   "-DANALYZE_SOURCES_CPPCHECK=${ANALYZE_SOURCES_CPPCHECK}"
+  "-DMFEM_DATA_PATH=${CMAKE_BINARY_DIR}/extern/mfem/data" # Path to meshes for testing
+  "-DPALACE_BUILD_EXTERNAL_DEPS=${PALACE_BUILD_EXTERNAL_DEPS}" # For Catch2
+  "-DPALACE_BUILD_WITH_COVERAGE=${PALACE_BUILD_WITH_COVERAGE}"
 )
 if(PALACE_WITH_ARPACK)
   list(APPEND PALACE_OPTIONS
@@ -34,10 +37,19 @@ if(PALACE_WITH_ARPACK)
   )
 endif()
 
+# Configure LAPACK dependency
+if(NOT "${BLAS_LAPACK_LIBRARIES}" STREQUAL "")
+  list(APPEND PALACE_OPTIONS
+    "-DBLAS_LIBRARIES=${BLAS_LAPACK_LIBRARIES}"
+    "-DLAPACK_LIBRARIES=${BLAS_LAPACK_LIBRARIES}"
+  )
+endif()
+
 # Configure GPU support
 if(PALACE_WITH_CUDA)
   list(APPEND PALACE_OPTIONS
     "-DPALACE_WITH_CUDA=ON"
+    "-DPALACE_WITH_GPU_AWARE_MPI=${PALACE_WITH_GPU_AWARE_MPI}"
     "-DCMAKE_CUDA_COMPILER=${CMAKE_CUDA_COMPILER}"
     "-DCMAKE_CUDA_FLAGS=${CMAKE_CUDA_FLAGS}"
   )
@@ -54,6 +66,7 @@ endif()
 if(PALACE_WITH_HIP)
   list(APPEND PALACE_OPTIONS
     "-DPALACE_WITH_HIP=ON"
+    "-DPALACE_WITH_GPU_AWARE_MPI=${PALACE_WITH_GPU_AWARE_MPI}"
     "-DCMAKE_HIP_COMPILER=${CMAKE_HIP_COMPILER}"
     "-DCMAKE_HIP_FLAGS=${CMAKE_HIP_FLAGS}"
   )
@@ -72,9 +85,6 @@ string(REPLACE ";" "; " PALACE_OPTIONS_PRINT "${PALACE_OPTIONS}")
 message(STATUS "PALACE_OPTIONS: ${PALACE_OPTIONS_PRINT}")
 
 include(ExternalProject)
-if(POLICY CMP0114)
-  cmake_policy(SET CMP0114 NEW)
-endif()
 ExternalProject_Add(palace
   DEPENDS           ${PALACE_DEPENDENCIES}
   SOURCE_DIR        ${CMAKE_SOURCE_DIR}/palace
@@ -90,9 +100,10 @@ ExternalProject_Add(palace
 # Add target for Palace unit tests
 ExternalProject_Add_Step(palace tests
   COMMAND           ${CMAKE_MAKE_PROGRAM} unit-tests
+  COMMAND           ${CMAKE_COMMAND} --install <BINARY_DIR>/test/unit --prefix ${CMAKE_INSTALL_PREFIX}
   DEPENDEES         install
   DEPENDERS         ""
-  COMMENT           "Building unit tests for 'palace'"
+  COMMENT           "Building and installing unit tests for 'palace'"
   WORKING_DIRECTORY <BINARY_DIR>
   EXCLUDE_FROM_MAIN TRUE
 )

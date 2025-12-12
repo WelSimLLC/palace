@@ -6,7 +6,10 @@
 #
 
 # CMake 3.21 was released in Jul. 2021 (required for HIP support)
-cmake_minimum_required(VERSION 3.21)
+# Cmake 3.24 was released in Aug. 2022 (required for portable WHOLE_ARCHIVE linking of tests)
+cmake_minimum_required(VERSION 3.24)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Prohibit in-source builds
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
@@ -14,12 +17,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 endif()
 
 # Initialize the project
-project(palace-superbuild LANGUAGES CXX C VERSION 0.11.2)
+project(palace-superbuild LANGUAGES CXX C VERSION 0.14.0)
 
 # Define build settings and defaults
 set(PALACE_WITH_64BIT_INT OFF CACHE BOOL "Use 64 bit integers")
 set(PALACE_WITH_64BIT_BLAS_INT OFF CACHE BOOL "Use ILP64 BLAS/LAPACK interface instead of LP64 (experimental, not recommended)")
 set(PALACE_WITH_OPENMP OFF CACHE BOOL "Use OpenMP for shared-memory parallelism")
+set(PALACE_WITH_CUDA OFF CACHE BOOL "Use CUDA for NVIDIA GPU support")
+set(PALACE_WITH_HIP OFF CACHE BOOL "Use HIP for AMD or NVIDIA GPU support")
+set(PALACE_WITH_GPU_AWARE_MPI OFF CACHE BOOL "Option to set if MPI distribution is GPU aware")
 
 set(PALACE_BUILD_EXTERNAL_DEPS ON CACHE BOOL "Build external third-party dependency libraries")
 set(PALACE_WITH_SUPERLU ON CACHE BOOL "Build with SuperLU_DIST sparse direct solver")
@@ -31,12 +37,66 @@ set(PALACE_WITH_LIBXSMM ON CACHE BOOL "Build with LIBXSMM backend for libCEED")
 set(PALACE_WITH_MAGMA ON CACHE BOOL "Build with MAGMA backend for libCEED")
 set(PALACE_WITH_GSLIB ON CACHE BOOL "Build with GSLIB library for high-order field interpolation")
 
+set(PALACE_WITH_STRUMPACK_BUTTERFLYPACK OFF CACHE BOOL "Build with ButterflyPACK support for STRUMPACK solver")
+set(PALACE_WITH_STRUMPACK_ZFP OFF CACHE BOOL "Build with ZFP support for STRUMPACK solver")
+
+set(PALACE_WITH_SUNDIALS ON CACHE BOOL "Build with SUNDIALS differential/algebraic equations solver")
+
 set(ANALYZE_SOURCES_CLANG_TIDY OFF CACHE BOOL "Run static analysis checks using clang-tidy")
 set(ANALYZE_SOURCES_CPPCHECK OFF CACHE BOOL "Run static analysis checks using cppcheck")
+
+set(PALACE_BUILD_WITH_COVERAGE OFF CACHE BOOL "Compile Palace with coverage flags (source-based for LLVM; gcov for GCC)")
 
 # Enable Fortran if required
 if(PALACE_WITH_STRUMPACK OR PALACE_WITH_MUMPS OR PALACE_WITH_ARPACK)
   enable_language(Fortran)
+endif()
+
+# Enable CUDA/HIP if required
+if(PALACE_WITH_CUDA AND PALACE_WITH_HIP)
+  message(FATAL_ERROR "PALACE_WITH_CUDA is not compatible with PALACE_WITH_HIP")
+endif()
+if(PALACE_WITH_CUDA)
+  # Note: The new behavior of CMake policy CMP0104 will initialize CMAKE_CUDA_ARCHITECTURES
+  # to an (old) compatible value even when not set by the user.
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "52")
+    find_program(NVIDIA_SMI_CMD nvidia-smi)
+    if(NVIDIA_SMI_CMD)
+      execute_process(COMMAND ${NVIDIA_SMI_CMD} --query-gpu=compute_cap --format=csv,noheader
+        OUTPUT_VARIABLE CUDA_CAPS RESULT_VARIABLE SMI_RESULT ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+      if(SMI_RESULT EQUAL 0 AND CUDA_CAPS)
+        # Remove dots (8.6 -> 86) and convert newlines to semicolons
+        string(REGEX REPLACE "\\." "" CUDA_CAPS "${CUDA_CAPS}")
+        string(REGEX REPLACE "\n" ";" CUDA_CAPS "${CUDA_CAPS}")
+        list(REMOVE_DUPLICATES CUDA_CAPS)
+        string(REPLACE ";" "," CMAKE_CUDA_ARCHITECTURES "${CUDA_CAPS}")
+        message(STATUS "Detected CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+      else()
+        set(CMAKE_CUDA_ARCHITECTURES "70")
+        message(STATUS "nvidia-smi failed, using default CUDA architecture: 70")
+      endif()
+    else()
+      set(CMAKE_CUDA_ARCHITECTURES "70")
+      message(STATUS "nvidia-smi not found, using default CUDA architecture: 70")
+    endif()
+    set(CMAKE_CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}" CACHE STRING "CUDA architectures" FORCE)
+  endif()
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+elseif(PALACE_WITH_HIP)
+  enable_language(HIP)
+  get_filename_component(HIPCC_DIR ${CMAKE_HIP_COMPILER} DIRECTORY)
+  get_filename_component(BIN_HIPCC_DIR ${HIPCC_DIR} DIRECTORY)
+  set(ROCM_DIR "${BIN_HIPCC_DIR}" CACHE STRING
+    "CUDA installation directory, typically /opt/rocm"
+  )
+  message(STATUS "Found HIP: ${ROCM_DIR}")
+  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES)
+    message(STATUS "Setting CMAKE_HIP_ARCHITECTURES to 'gfx900' as none were specified")
+    set(CMAKE_HIP_ARCHITECTURES "gfx900" CACHE STRING
+      "Specifies the list of AMD GPU architectures to generate device code for"
+    )
+  endif()
 endif()
 
 # Set a default build type if none was provided
@@ -46,6 +106,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     "Specifies the build type ('Debug' or 'Release', for example)" FORCE
   )
 endif()
+
+string(TOUPPER "${CMAKE_BUILD_TYPE}" BUILD_TYPE_UPPER)
 
 # Set a default installation location if none was provided
 if(NOT CMAKE_INSTALL_PREFIX OR CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -104,12 +166,17 @@ message(STATUS "================= Configuring BLAS/LAPACK dependencies =========
 include(ExternalBLASLAPACK)
 
 # Default arguments for all external CMake builds (needs to happen after BLAS/LAPACK
-# detection in case CMAKE_PREFIX_PATH is modified)
-# See https://spack.readthedocs.io/en/latest/build_systems/cmakepackage.html#cmake-arguments-provided-by-spack
+# detection in case CMAKE_PREFIX_PATH is modified). Compilers and flags are added on a
+# package by package basis.
+# See Spack docs: http://tinyurl.com/43t2recp
 set(PALACE_SUPERBUILD_DEFAULT_ARGS
   "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}"
   "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
   "-DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}"
+  "-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS}"
+  "-DCMAKE_MODULE_LINKER_FLAGS=${CMAKE_MODULE_LINKER_FLAGS}"
+  "-DCMAKE_SHARED_LINKER_FLAGS=${CMAKE_SHARED_LINKER_FLAGS}"
+  "-DCMAKE_STATIC_LINKER_FLAGS=${CMAKE_STATIC_LINKER_FLAGS}"
 )
 if(NOT "${CMAKE_PREFIX_PATH}" STREQUAL "")
   string(REPLACE ";" "$<SEMICOLON>" PALACE_CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}")
@@ -144,16 +211,6 @@ include(ExternalGitTags)
 if(PALACE_BUILD_EXTERNAL_DEPS)
   add_subdirectory("extern")
 endif()
-
-# Add GSLIB (always built as part of Palace)
-if(PALACE_WITH_GSLIB)
-  message(STATUS "===================== Configuring GSLIB dependency =====================")
-  include(ExternalGSLIB)
-endif()
-
-# Add libCEED (always built as part of Palace)
-message(STATUS "==================== Configuring libCEED dependency ====================")
-include(ExternalLibCEED)
 
 # Add MFEM (always built as part of Palace)
 message(STATUS "====================== Configuring MFEM dependency =====================")

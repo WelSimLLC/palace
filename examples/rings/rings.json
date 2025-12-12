@@ -3,12 +3,12 @@
   {
     "Type": "Magnetostatic",
     "Verbose": 2,
-    "Output": "D:/WelSimLLC/executable28/_palace_examples/rings/postpro"
+    "Output": "postpro"
   },
   "Model":
   {
-    "Mesh": "D:/WelSimLLC/executable28/_palace_examples/rings/mesh/rings.msh",
-    "L0": 1.0e-6  // um
+    "Mesh": "mesh/rings.msh",
+    "L0": 1.0e-6  // μm
   },
   "Domains":
   {
@@ -25,9 +25,14 @@
       [
         {
           "Index": 1,  // Center of rings
-          "X": 0.0,
-          "Y": 0.0,
-          "Z": 0.0
+          "Center": [0.0, 0.0, 0.0]
+        }
+      ],
+      "Energy":
+      [
+        {
+          "Index": 1,
+          "Attributes": [1]
         }
       ]
     }
@@ -53,17 +58,19 @@
     ],
     "Postprocessing":  // Inductance from flux instead of energy
     {
-      "Inductance":
+      "SurfaceFlux":
       [
         {
           "Index": 1,
-          "Attributes": [6],  // Inner hole
-          "Direction": [0, 0, 1]
+          "Attributes": [6],    // Inner hole
+          "Type": "Magnetic",
+	  "Center": [0, 0, -1]  // Positive in +Z
         },
         {
           "Index": 2,
           "Attributes": [6, 7],  // Outer (total) hole
-          "Direction": [0, 0, 1]
+	  "Type": "Magnetic",
+          "Center": [0, 0, -1]   // Positive in +Z
         }
       ]
     }
@@ -71,6 +78,7 @@
   "Solver":
   {
     "Order": 2,
+    "Device": "CPU",
     "Magnetostatic":
     {
       "Save": 2

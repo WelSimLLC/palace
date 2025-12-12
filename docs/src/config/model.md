@@ -20,13 +20,20 @@
 
 with
 
-`"Mesh" [None]` :  Input mesh file path, an absolute path is recommended.
+`"Mesh" [None]` :  Input mesh file path, an absolute path is recommended. If the provided
+mesh is nonconformal, it is assumed that it comes from a previous *Palace* solve using AMR,
+and all mesh preprocessing checks and modifications (for example
+[`model["Refinement"]["CrackInternalBoundaryElements"]`](#model%5B%22Refinement%22%5D)), are
+skipped .
 
-`"L0" [1.0e-6]` :  Mesh vertex coordinate length unit, m.
+`"L0" [1.0e-6]` :  Unit, relative to m, for mesh vertex coordinates. For example, a value
+of `1.0e-6` implies the mesh coordinates are in μm.
 
 `"Lc" [0.0]` :  Characteristic length scale used for nondimensionalization, specified in
-mesh length units. A value less than or equal to zero uses an internally calculated length
-scale based on the bounding box of the computational domain.
+mesh length units. This keyword should typically not be specified by the user. A value less
+than or equal to zero uses an internally calculated length scale based on the bounding box
+of the computational domain. A value of 1.0 will disable nondimensionalization of lengths
+in the model and all computations will take place in the same units as the mesh.
 
 `"Refinement"` : Top-level object for configuring mesh refinement.
 
@@ -45,9 +52,8 @@ scale based on the bounding box of the computational domain.
     [
         {
             "Levels": <int>,
-            "XLimits": [<float array>],
-            "YLimits": [<float array>],
-            "ZLimits": [<float array>]
+            "BoundingBoxMin": [<float array>],
+            "BoundingBoxMax": [<float array>]
         },
         ...
     ],
@@ -56,7 +62,7 @@ scale based on the bounding box of the computational domain.
         {
             "Levels": <int>,
             "Center": [<float array>],
-            "Radius": float
+            "Radius": <float>
         },
         ...
     ]
@@ -65,7 +71,7 @@ scale based on the bounding box of the computational domain.
 
 with
 
-`"Tol" [1e-2]` : Relative error convergence tolerance for adaptive mesh refinement (AMR).
+`"Tol" [1.0e-2]` : Relative error convergence tolerance for adaptive mesh refinement (AMR).
 
 `"MaxIts" [0]` : Maximum number of iterations of AMR to perform.
 
@@ -83,7 +89,8 @@ per iteration, at the cost of the final mesh being less efficient.
 
 `"UniformLevels" [0]` :  Levels of uniform parallel mesh refinement to be performed on the
 input mesh. If not performing AMR, these may be used as levels within a geometric multigrid
-scheme.
+scheme. If performing AMR the most refined mesh is used as the initial mesh and the coarser
+meshes cannot be used in a geometric multigrid scheme.
 
 `"Boxes"` :  Array of box region refinement objects. All elements with a node inside the box
 region will be marked for refinement.
@@ -93,20 +100,16 @@ the sphere region will be marked for refinement.
 
 `"Levels" [0]` : Levels of parallel mesh refinement inside the specified refinement region.
 
-`"XLimits" [None]` : Floating point array of length 2 specifying the limits in the
-``x``-direction of the axis-aligned bounding box for this box refinement region. Specified
-in mesh length units.
+`"BoundingBoxMin" [None]` : Floating point array of length equal to the model spatial
+dimension specifying the minimum coordinates of the axis-aligned bounding box for this
+refinement region. Specified in mesh length units.
 
-`"YLimits" [None]` : Floating point array of length 2 specifying the limits in the
-``y``-direction of the axis-aligned bounding box for this box refinement region. Specified
-in mesh length units.
-
-`"ZLimits" [None]` : Floating point array of length 2 specifying the limits in the
-``z``-direction of the axis-aligned bounding box for this box refinement region. Specified
-in mesh length units.
+`"BoundingBoxMax" [None]` : Floating point array of length equal to the model spatial
+dimension specifying the maximum coordinates of the axis-aligned bounding box for this
+refinement region. Specified in mesh length units.
 
 `"Center" [None]` : Floating point array of length equal to the model spatial dimension
-specfiying the center coordinates of the sphere for this sphere refinement region.
+specifying the center coordinates of the sphere for this sphere refinement region.
 Specified in mesh length units.
 
 `"Radius" [None]` : The radius of the sphere for this sphere refinement region, specified in
@@ -114,10 +117,20 @@ mesh length units.
 
 ### Advanced model options
 
-  - `"Partition" [""]`
-  - `"ReorientTetMesh" [false]`
   - `"RemoveCurvature" [false]`
+  - `"MakeSimplex" [false]`
+  - `"MakeHexahedral" [false]`
+  - `"ReorderElements" [false]`
+  - `"CleanUnusedElements" [true]`
+  - `"CrackInternalBoundaryElements" [true]`
+  - `"RefineCrackElements" [true]`
+  - `"CrackDisplacementFactor" [1.0e-12]`
+  - `"AddInterfaceBoundaryElements" [true]`
+  - `"ExportPrerefinedMesh" [false]`
+  - `"ReorientTetMesh" [false]`
+  - `"Partitioning" [""]`
   - `"MaxNCLevels" [1]`
   - `"MaximumImbalance" [1.1]`
   - `"SaveAdaptIterations" [true]`
   - `"SaveAdaptMesh" [false]`
+  - `"SerialUniformLevels" [0]`

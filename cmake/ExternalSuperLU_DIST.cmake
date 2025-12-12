@@ -20,12 +20,23 @@ list(APPEND SUPERLU_OPTIONS
   "-Denable_double=ON"
   "-Denable_single=ON"
   "-Denable_complex16=ON"
-  "-Denable_openmp=${PALACE_WITH_OPENMP}"
+  "-Denable_python=OFF"
   "-DTPL_ENABLE_PARMETISLIB=ON"
   "-DTPL_PARMETIS_LIBRARIES=${PARMETIS_LIBRARIES}$<SEMICOLON>${METIS_LIBRARIES}"
   "-DTPL_PARMETIS_INCLUDE_DIRS=${CMAKE_INSTALL_PREFIX}/include"
   "-DTPL_ENABLE_COMBBLASLIB=OFF"
 )
+
+# Always disable OpenMP (seems slower in all cases, just link to threaded BLAS/LAPACK)
+# if(PALACE_WITH_OPENMP)
+#   list(APPEND SUPERLU_OPTIONS
+#     "-Denable_openmp=ON"
+#   )
+# else()
+  list(APPEND SUPERLU_OPTIONS
+    "-Denable_openmp=OFF"
+  )
+# endif()
 
 # SuperLU_DIST has a BUILD_STATIC_LIBS option which defaults to ON
 if(BUILD_SHARED_LIBS)
@@ -51,47 +62,50 @@ if(NOT "${BLAS_LAPACK_LIBRARIES}" STREQUAL "")
   )
 endif()
 
-# Configure GPU support
-if(PALACE_WITH_CUDA)
-  list(APPEND SUPERLU_OPTIONS
-    "-DTPL_ENABLE_CUDALIB=ON"
-    "-DCMAKE_CUDA_COMPILER=${CMAKE_CUDA_COMPILER}"
-    "-DCMAKE_CUDA_FLAGS=${CMAKE_CUDA_FLAGS}"
-  )
-  if(NOT "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "")
-    list(APPEND SUPERLU_OPTIONS
-      "-DCMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}"
-    )
-  endif()
-else()
-  list(APPEND SUPERLU_OPTIONS
-    "-DTPL_ENABLE_CUDALIB=OFF"
-  )
-endif()
-if(PALACE_WITH_HIP)
-  list(APPEND SUPERLU_OPTIONS
-    "-DTPL_ENABLE_HIPLIB=ON"
-    "-DHIP_ROOT_DIR=${ROCM_DIR}"
-    "-DCMAKE_HIP_COMPILER=${CMAKE_HIP_COMPILER}"
-    "-DCMAKE_HIP_FLAGS=${CMAKE_HIP_FLAGS}"
-  )
-  if(NOT "${CMAKE_HIP_ARCHITECTURES}" STREQUAL "")
-    list(APPEND SUPERLU_OPTIONS
-      "-DCMAKE_HIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}"
-    )
-  endif()
-else()
-  list(APPEND SUPERLU_OPTIONS
-    "-DTPL_ENABLE_HIPLIB=OFF"
-  )
-endif()
+# Configure GPU support (for now, disable since faster on CPU)
+list(APPEND SUPERLU_OPTIONS
+  "-DTPL_ENABLE_CUDALIB=OFF"
+  "-DTPL_ENABLE_HIPLIB=OFF"
+)
+# if(PALACE_WITH_CUDA)
+#   list(APPEND SUPERLU_OPTIONS
+#     "-DTPL_ENABLE_CUDALIB=ON"
+#     "-DCMAKE_CUDA_COMPILER=${CMAKE_CUDA_COMPILER}"
+#     "-DCMAKE_CUDA_FLAGS=${CMAKE_CUDA_FLAGS}"
+#   )
+#   if(NOT "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "")
+#     list(APPEND SUPERLU_OPTIONS
+#       "-DCMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}"
+#     )
+#   endif()
+# else()
+#   list(APPEND SUPERLU_OPTIONS
+#     "-DTPL_ENABLE_CUDALIB=OFF"
+#   )
+# endif()
+# if(PALACE_WITH_HIP)
+#   list(APPEND SUPERLU_OPTIONS
+#     "-DTPL_ENABLE_HIPLIB=ON"
+#     "-DHIP_ROOT_DIR=${ROCM_DIR}"
+#     "-DCMAKE_HIP_COMPILER=${CMAKE_HIP_COMPILER}"
+#     "-DCMAKE_HIP_FLAGS=${CMAKE_HIP_FLAGS}"
+#   )
+#   if(NOT "${CMAKE_HIP_ARCHITECTURES}" STREQUAL "")
+#     list(APPEND SUPERLU_OPTIONS
+#       "-DCMAKE_HIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}"
+#     )
+#   endif()
+# else()
+#   list(APPEND SUPERLU_OPTIONS
+#     "-DTPL_ENABLE_HIPLIB=OFF"
+#   )
+# endif()
 
 string(REPLACE ";" "; " SUPERLU_OPTIONS_PRINT "${SUPERLU_OPTIONS}")
 message(STATUS "SUPERLU_OPTIONS: ${SUPERLU_OPTIONS_PRINT}")
 
 # Fix column permutations
 set(SUPERLU_PATCH_FILES
-  "${CMAKE_SOURCE_DIR}/extern/patch/superlu_dist/patch_metis.diff"
   "${CMAKE_SOURCE_DIR}/extern/patch/superlu_dist/patch_parmetis.diff"
 )
 

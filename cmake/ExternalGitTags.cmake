@@ -20,7 +20,7 @@ set(EXTERN_ARPACK_GIT_BRANCH
   "Git branch for external ARPACK-NG build"
 )
 set(EXTERN_ARPACK_GIT_TAG
-  "569a3859c1bf79b303d830ada7b745de0f18512c" CACHE STRING  # 10/15/2023
+  "804fa3149a0f773064198a8e883bd021832157ca" CACHE STRING
   "Git tag for external ARPACK-NG build"
 )
 
@@ -34,22 +34,8 @@ set(EXTERN_BUTTERFLYPACK_GIT_BRANCH
   "Git branch for external ButterflyPACK build"
 )
 set(EXTERN_BUTTERFLYPACK_GIT_TAG
-  "cb336d97dce3ddd371e87c21f622fdba3ca3ed9b" CACHE STRING  # 10/31/2023
+  "b7130fd234a23232620dfabc52fa1c7df6065842" CACHE STRING
   "Git tag for external ButterflyPACK build"
-)
-
-# GKlib (for METIS and ParMETIS)
-set(EXTERN_GKLIB_URL
-  "https://github.com/KarypisLab/GKlib.git" CACHE STRING
-  "URL for external GKlib build"
-)
-set(EXTERN_GKLIB_GIT_BRANCH
-  "master" CACHE STRING
-  "Git branch for external GKlib build"
-)
-set(EXTERN_GKLIB_GIT_TAG
-  "8bd6bad750b2b0d90800c632cf18e8ee93ad72d7" CACHE STRING  # 03/26/2023
-  "Git tag for external GKlib build"
 )
 
 # GSLIB
@@ -62,7 +48,7 @@ set(EXTERN_GSLIB_GIT_BRANCH
   "Git branch for external GSLIB build"
 )
 set(EXTERN_GSLIB_GIT_TAG
-  "39d1baae8f4bfebe3ebca6a234dcc8ba1ee5edc7" CACHE STRING  # 11/09/2022
+  "95acf5b42301d6cb48fda88d662f1d784b863089" CACHE STRING
   "Git tag for external GSLIB build"
 )
 
@@ -76,7 +62,7 @@ set(EXTERN_HYPRE_GIT_BRANCH
   "Git branch for external HYPRE build"
 )
 set(EXTERN_HYPRE_GIT_TAG
-  "cf43b1653008bf69a433365f39162831ec75a863" CACHE STRING  # 11/10/2023
+  "4dd96d0e83088890879612c58364f6c10756ed90" CACHE STRING
   "Git tag for external HYPRE build"
 )
 
@@ -90,7 +76,7 @@ set(EXTERN_LIBCEED_GIT_BRANCH
   "Git branch for external libCEED build"
 )
 set(EXTERN_LIBCEED_GIT_TAG
-  "6dbc39456a768b0ea4055927c94c474873ea8bf6" CACHE STRING  # main @ 11/12/2023
+  "95bd1e908b16e04a70015e3a9a7fddec5e9c3fc8" CACHE STRING
   "Git tag for external libCEED build"
 )
 
@@ -104,13 +90,13 @@ set(EXTERN_LIBXSMM_GIT_BRANCH
   "Git branch for external LIBXSMM build"
 )
 set(EXTERN_LIBXSMM_GIT_TAG
-  "c62dae286096c3f3e057cff08f60cb9f9c588423" CACHE STRING  # 11/13/2023
+  "3469aa806f4acef8f30c1241d5c2705713811b4c" CACHE STRING
   "Git tag for external LIBXSMM build"
 )
 
 # MAGMA
 set(EXTERN_MAGMA_URL
-  "https://bitbucket.org/icl/magma.git" CACHE STRING
+  "https://github.com/icl-utk-edu/magma.git" CACHE STRING
   "URL for external MAGMA build"
 )
 set(EXTERN_MAGMA_GIT_BRANCH
@@ -118,13 +104,13 @@ set(EXTERN_MAGMA_GIT_BRANCH
   "Git branch for external MAGMA build"
 )
 set(EXTERN_MAGMA_GIT_TAG
-  "fcfe5aa61c1a4c664b36a73ebabbdbab82765e9f" CACHE STRING  # 11/09/2023
+  "07b2b05635f0510ea4538f7ab68e50dcf0c0c815" CACHE STRING
   "Git tag for external MAGMA build"
 )
 
 # METIS
 set(EXTERN_METIS_URL
-  "https://github.com/KarypisLab/METIS.git" CACHE STRING
+  "https://bitbucket.org/petsc/pkg-metis.git" CACHE STRING
   "URL for external METIS build"
 )
 set(EXTERN_METIS_GIT_BRANCH
@@ -132,7 +118,7 @@ set(EXTERN_METIS_GIT_BRANCH
   "Git branch for external METIS build"
 )
 set(EXTERN_METIS_GIT_TAG
-  "e0f1b88b8efcb24ffa0ec55eabb78fbe61e58ae7" CACHE STRING  # 04/02/2023
+  "08c3082720ff9114b8e3cbaa4484a26739cd7d2d" CACHE STRING
   "Git tag for external METIS build"
 )
 
@@ -146,7 +132,7 @@ set(EXTERN_MFEM_GIT_BRANCH
   "Git branch for external MFEM build"
 )
 set(EXTERN_MFEM_GIT_TAG
-  "1c58d6d3d1f30d822d3a8b1ebefe07888b348e58" CACHE STRING  # master @ 11/12/2023
+  "0c4c006ef86dc2b2cf415e5bc4ed9118c9768652" CACHE STRING
   "Git tag for external MFEM build"
 )
 
@@ -160,21 +146,21 @@ set(EXTERN_MUMPS_GIT_BRANCH
   "Git branch for external MUMPS build"
 )
 set(EXTERN_MUMPS_GIT_TAG
-  "1ea85fa01fd79cca8d06fefb52e0bfc2e996132f" CACHE STRING  # 11/09/2023
+  "1cfd19699702f9a64ff5d45827d6025ff5c3873a" CACHE STRING
   "Git tag for external MUMPS build"
 )
 
 # ParMETIS
 set(EXTERN_PARMETIS_URL
-  "https://github.com/KarypisLab/ParMETIS.git" CACHE STRING
+  "https://bitbucket.org/petsc/pkg-parmetis.git" CACHE STRING
   "URL for external ParMETIS build"
 )
 set(EXTERN_PARMETIS_GIT_BRANCH
-  "main" CACHE STRING
+  "master" CACHE STRING
   "Git branch for external ParMETIS build"
 )
 set(EXTERN_PARMETIS_GIT_TAG
-  "8ee6a372ca703836f593e3c450ca903f04be14df" CACHE STRING  # 03/26/2023
+  "53c9341b6c1ba876c97567cb52ddfc87c159dc36" CACHE STRING
   "Git tag for external ParMETIS build"
 )
 
@@ -188,36 +174,22 @@ set(EXTERN_PETSC_GIT_BRANCH
   "Git branch for external PETSc build"
 )
 set(EXTERN_PETSC_GIT_TAG
-  "7b506345644a939af5723216e40ffcdd7780697d" CACHE STRING  # 11/14/2023
+  "0311516ef26856f9037490a5104151a9a9d292aa" CACHE STRING
   "Git tag for external PETSc build"
 )
 
 # ScaLAPACK (for STRUMPACK and MUMPS)
 set(EXTERN_SCALAPACK_URL
-  "https://github.com/scivision/scalapack.git" CACHE STRING
+  "https://github.com/Reference-ScaLAPACK/scalapack.git" CACHE STRING
   "URL for external ScaLAPACK build"
 )
 set(EXTERN_SCALAPACK_GIT_BRANCH
-  "main" CACHE STRING
+  "master" CACHE STRING
   "Git branch for external ScaLAPACK build"
 )
 set(EXTERN_SCALAPACK_GIT_TAG
-  "acf286b783d53f73a42ec219ead74357e0b34501" CACHE STRING  # 11/09/2023
+  "6423f17933eb9a2522814b78ab3c0d6da25ee85a" CACHE STRING
   "Git tag for external ScaLAPACK build"
-)
-
-# SLATE (for STRUMPACK)
-set(EXTERN_SLATE_URL
-  "https://github.com/icl-utk-edu/slate.git" CACHE STRING
-  "URL for external SLATE build"
-)
-set(EXTERN_SLATE_GIT_BRANCH
-  "master" CACHE STRING
-  "Git branch for external SLATE build"
-)
-set(EXTERN_SLATE_GIT_TAG
-  "4323f4b430198d64c6ba90ca8e8a4f9272f59e77" CACHE STRING  # 11/08/2022
-  "Git tag for external SLATE build"
 )
 
 # SLEPc
@@ -230,7 +202,7 @@ set(EXTERN_SLEPC_GIT_BRANCH
   "Git branch for external SLEPc build"
 )
 set(EXTERN_SLEPC_GIT_TAG
-  "228ef2b053da4df23e47def33189f7d6381cd660" CACHE STRING  # 11/14/2023
+  "61182f12f55a2c1e9f5f1ddbc66df7e264d4bfe8" CACHE STRING
   "Git tag for external SLEPc build"
 )
 
@@ -244,7 +216,7 @@ set(EXTERN_STRUMPACK_GIT_BRANCH
   "Git branch for external STRUMPACK build"
 )
 set(EXTERN_STRUMPACK_GIT_TAG
-  "8f716f1f819c4fcf864ccaaa2046d50420dcee36" CACHE STRING  # 10/26/2023
+  "5a5643c174eb64845bf397859d11a14d4f1d11a1" CACHE STRING
   "Git tag for external STRUMPACK build"
 )
 
@@ -258,7 +230,7 @@ set(EXTERN_SUPERLU_GIT_BRANCH
   "Git branch for external SuperLU_DIST build"
 )
 set(EXTERN_SUPERLU_GIT_TAG
-  "ad6411ff95bbaf0180a5001ff269047622bc1ae6" CACHE STRING  # 11/12/2023
+  "e621c471cf23329e568df71c6b724329bc04b0f8" CACHE STRING
   "Git tag for external SuperLU_DIST build"
 )
 
@@ -272,24 +244,44 @@ set(EXTERN_ZFP_GIT_BRANCH
   "Git branch for external ZFP build"
 )
 set(EXTERN_ZFP_GIT_TAG
-  "bcc5a254823224c5010b51dc28d5c6c47b20ef39" CACHE STRING  # 10/17/2023
+  "c2dd2966f6bab18e352b0fa29c3c5f27836580f8" CACHE STRING
   "Git tag for external ZFP build"
 )
 
 # nlohmann/json
 set(EXTERN_JSON_URL
-  "https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz" CACHE STRING
+  "https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz" CACHE STRING
   "URL for external nlohmann/json build"
 )
 
 # fmt
 set(EXTERN_FMT_URL
-  "https://github.com/fmtlib/fmt/releases/download/10.1.1/fmt-10.1.1.zip" CACHE STRING
+  "https://github.com/fmtlib/fmt/releases/download/10.2.1/fmt-10.2.1.zip" CACHE STRING
   "URL for external fmt build"
+)
+
+# scn
+set(EXTERN_SCN_URL
+  "https://github.com/eliaskosunen/scnlib/archive/refs/tags/v4.0.1.zip" CACHE STRING
+  "URL for external scn build"
 )
 
 # Eigen
 set(EXTERN_EIGEN_URL
   "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz" CACHE STRING
   "URL for external Eigen build"
+)
+
+# SUNDIALS
+set(EXTERN_SUNDIALS_URL
+  "https://github.com/LLNL/sundials.git" CACHE STRING
+  "URL for external SUNDIALS build"
+)
+set(EXTERN_SUNDIALS_GIT_BRANCH
+  "main" CACHE STRING
+  "Git branch for external SUNDIALS build"
+)
+set(EXTERN_SUNDIALS_GIT_TAG
+  "8e17876d3b4d682b4098684b07a85b005a122f81" CACHE STRING
+  "Git tag for external SUNDIALS build"
 )

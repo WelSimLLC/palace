@@ -1,44 +1,50 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# Generated with:
+# julia -e 'include("mesh/mesh.jl"); generate_coaxial_mesh(filename="coaxial.msh")'
+
 using Gmsh: gmsh
 
 """
     generate_coaxial_mesh(;
-        refinement::Integer     = 0,
-        order::Integer          = 1,
+        filename::AbstractString,
+        refinement::Integer     = 2,
+        order::Integer          = 2,
         inner_diameter_mm::Real = 1.6383,
         outer_diameter_mm::Real = 5.461,
         length_mm::Real         = 40.0,
-        filename::AbstractString,
-        verbose::Integer=1
+        verbose::Integer        = 5,
+        gui::Bool               = false
     )
 
 Generate a mesh for the coaxial cable example using Gmsh
 
 # Arguments
 
+  - filename - the filename to use for the generated mesh
   - refinement - measure of how many elements to include, 0 is least
   - order - the polynomial order of the approximation, minimum 1
   - inner_diameter_mm - the inner diameter of the cable, in millimeters
   - outer_diameter_mm - the outer diameter of the cable, in millimeters
   - length_mm - the length of the cable, in millimeters
-  - filename - the filename to use for the generated mesh
   - verbose - flag to dictate the level of print to REPL, passed to Gmsh
+  - gui - whether to launch the Gmsh GUI on mesh generation
 """
 function generate_coaxial_mesh(;
-    refinement::Integer     = 0,
-    order::Integer          = 1,
+    filename::AbstractString,
+    refinement::Integer     = 2,
+    order::Integer          = 2,
     inner_diameter_mm::Real = 1.6383,
     outer_diameter_mm::Real = 5.461,
     length_mm::Real         = 40.0,
-    filename::AbstractString,
-    verbose::Integer=1
+    verbose::Integer        = 5,
+    gui::Bool               = false
 )
     @assert outer_diameter_mm > inner_diameter_mm > 0
     @assert length_mm > 0
     @assert refinement >= 0
-    @assert order > 1
+    @assert order > 0
 
     kernel = gmsh.model.occ
 
@@ -143,12 +149,15 @@ function generate_coaxial_mesh(;
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
 
+    gmsh.option.setNumber("Mesh.Algorithm", 6)
+    gmsh.option.setNumber("Mesh.Algorithm3D", 1)
+
     gmsh.model.mesh.generate(3)
     gmsh.model.mesh.setOrder(order)
 
     # Save mesh
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)
-    gmsh.option.setNumber("Mesh.Binary", 0)
+    gmsh.option.setNumber("Mesh.Binary", 1)
     gmsh.write(joinpath(@__DIR__, filename))
 
     # Print some information
@@ -162,7 +171,7 @@ function generate_coaxial_mesh(;
     end
 
     # Optionally launch GUI
-    if "gui" in lowercase.(ARGS)
+    if gui
         gmsh.fltk.run()
     end
 

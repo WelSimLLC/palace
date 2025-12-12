@@ -17,11 +17,14 @@ if(PALACE_BUILD_EXTERNAL_DEPS)
   if(PALACE_WITH_SUPERLU)
     list(APPEND MFEM_DEPENDENCIES superlu_dist)
   endif()
+  if(PALACE_WITH_SUNDIALS)
+    list(APPEND MFEM_DEPENDENCIES sundials)
+  endif()
+  if(PALACE_WITH_GSLIB)
+    list(APPEND MFEM_DEPENDENCIES gslib)
+  endif()
 else()
   set(MFEM_DEPENDENCIES)
-endif()
-if(PALACE_WITH_GSLIB)
-  list(APPEND MFEM_DEPENDENCIES gslib)
 endif()
 
 # Silence #pragma omp warnings when not building with OpenMP
@@ -73,6 +76,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug|debug|DEBUG")
   endif()
 endif()
 
+# Replace mfem abort calls with exceptions for testing, default off
+set(PALACE_MFEM_USE_EXCEPTIONS NO CACHE BOOL "MFEM throw exceptions instead of abort calls")
+
 set(MFEM_OPTIONS ${PALACE_SUPERBUILD_DEFAULT_ARGS})
 list(APPEND MFEM_OPTIONS
   "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
@@ -87,6 +93,8 @@ list(APPEND MFEM_OPTIONS
   "-DMFEM_USE_LIBUNWIND=${PALACE_MFEM_WITH_LIBUNWIND}"
   "-DMFEM_USE_METIS_5=YES"
   "-DMFEM_USE_CEED=NO"
+  "-DMFEM_USE_SUNDIALS=${PALACE_WITH_SUNDIALS}"
+  "-DMFEM_USE_EXCEPTIONS=${PALACE_MFEM_USE_EXCEPTIONS}"
 )
 if(PALACE_WITH_STRUMPACK OR PALACE_WITH_MUMPS)
   list(APPEND MFEM_OPTIONS
@@ -98,6 +106,7 @@ endif()
 # Configure BLAS/LAPACK for dependencies
 if(NOT "${BLAS_LAPACK_LIBRARIES}" STREQUAL "")
   list(APPEND MFEM_OPTIONS
+    # "-DMFEM_USE_LAPACK=YES"
     "-DBLAS_LIBRARIES=${BLAS_LAPACK_LIBRARIES}"
     "-DLAPACK_LIBRARIES=${BLAS_LAPACK_LIBRARIES}"
   )
@@ -142,10 +151,12 @@ endif()
 
 # MFEM with GSLIB is always built internally
 if(PALACE_WITH_GSLIB)
-  list(APPEND MFEM_OPTIONS
-    "-DMFEM_USE_GSLIB=YES"
-    "-DGSLIB_DIR=${CMAKE_INSTALL_PREFIX}"
-  )
+  list(APPEND MFEM_OPTIONS "-DMFEM_USE_GSLIB=YES")
+  if(PALACE_BUILD_EXTERNAL_DEPS)
+    list(APPEND MFEM_OPTIONS "-DGSLIB_DIR=${CMAKE_INSTALL_PREFIX}")
+  else()
+    list(APPEND MFEM_OPTIONS "-DGSLIB_DIR=${GSLIB_DIR}")
+  endif()
 endif()
 
 # Configure the rest of MFEM's dependencies
@@ -156,29 +167,25 @@ if(PALACE_BUILD_EXTERNAL_DEPS)
     "-DHYPRE_DIR=${CMAKE_INSTALL_PREFIX}"
     "-DHYPRE_REQUIRED_PACKAGES=LAPACK$<SEMICOLON>BLAS"
   )
-  if(PALACE_WITH_SUPERLU OR PALACE_WITH_STRUMPACK)
+  if(PALACE_WITH_SUPERLU OR PALACE_WITH_STRUMPACK OR PALACE_WITH_MUMPS)
     list(APPEND MFEM_OPTIONS
       "-DParMETIS_LIBRARIES=${PARMETIS_LIBRARIES}$<SEMICOLON>${METIS_LIBRARIES}"
       "-DParMETIS_INCLUDE_DIRS=${CMAKE_INSTALL_PREFIX}/include"
     )
   endif()
 
-  # HYPRE is built with cusparse, curand (or HIP counterparts).
+  # HYPRE is built with cusparse, curand (or HIP counterparts), and these are added to
+  # HYPRE_LIBRARIES by the MFEM CMake build. However, this ignores the include directories
+  # (for #include <cusparse.h>, for example), which we can add this way via CMake defining
+  # CUDAToolkit_INCLUDE_DIRS (and the HIP counterpart).
   if(PALACE_WITH_CUDA)
-    find_package(CUDAToolkit REQUIRED)
-    get_target_property(HYPRE_CURAND_LIBRARY CUDA::curand LOCATION)
-    get_target_property(HYPRE_CUSPARSE_LIBRARY CUDA::cusparse LOCATION)
     list(APPEND MFEM_OPTIONS
-      "-DHYPRE_REQUIRED_LIBRARIES=${HYPRE_CURAND_LIBRARY}$<SEMICOLON>${HYPRE_CUSPARSE_LIBRARY}"
+      "-DHYPRE_REQUIRED_PACKAGES=CUDAToolkit"
     )
   endif()
   if(PALACE_WITH_HIP)
-    find_package(rocrand REQUIRED)
-    find_package(rocsparse REQUIRED)
-    get_target_property(HYPRE_ROCRAND_LIBRARY roc::rocrand LOCATION)
-    get_target_property(HYPRE_ROCSPARSE_LIBRARY roc::rocsparse LOCATION)
     list(APPEND MFEM_OPTIONS
-      "-DHYPRE_REQUIRED_LIBRARIES=${HYPRE_ROCRAND_LIBRARY}$<SEMICOLON>${HYPRE_ROCSPARSE_LIBRARY}"
+      "-DHYPRE_REQUIRED_PACKAGES=rocsparse"
     )
   endif()
 
@@ -240,11 +247,11 @@ Intel C++ compiler for MUMPS and STRUMPACK dependencies")
       list(APPEND SUPERLU_REQUIRED_PACKAGES "OpenMP")
     endif()
     if(PALACE_WITH_CUDA)
-      list(APPEND SUPERLU_REQUIRED_PACKAGES "CUDA")
+      list(APPEND SUPERLU_REQUIRED_PACKAGES "CUDAToolkit")
       list(APPEND SUPERLU_REQUIRED_LIBRARIES ${SUPERLU_STRUMPACK_CUDA_LIBRARIES})
     endif()
     if(PALACE_WITH_HIP)
-      list(APPEND SUPERLU_REQUIRED_PACKAGES "HIP")
+      list(APPEND SUPERLU_REQUIRED_PACKAGES "hipblas$<SEMICOLON>rocblas")
       list(APPEND SUPERLU_REQUIRED_LIBRARIES ${SUPERLU_STRUMPACK_ROCM_LIBRARIES})
     endif()
     string(REPLACE ";" "$<SEMICOLON>" SUPERLU_REQUIRED_PACKAGES "${SUPERLU_REQUIRED_PACKAGES}")
@@ -271,11 +278,11 @@ Intel C++ compiler for MUMPS and STRUMPACK dependencies")
       list(APPEND STRUMPACK_REQUIRED_PACKAGES "OpenMP")
     endif()
     if(PALACE_WITH_CUDA)
-      list(APPEND STRUMPACK_REQUIRED_PACKAGES "CUDA")
+      list(APPEND STRUMPACK_REQUIRED_PACKAGES "CUDAToolkit")
       list(APPEND STRUMPACK_REQUIRED_LIBRARIES ${SUPERLU_STRUMPACK_CUDA_LIBRARIES})
     endif()
     if(PALACE_WITH_HIP)
-      list(APPEND STRUMPACK_REQUIRED_PACKAGES "HIP")
+      list(APPEND STRUMPACK_REQUIRED_PACKAGES "hipblas$<SEMICOLON>rocblas")
       list(APPEND STRUMPACK_REQUIRED_LIBRARIES ${SUPERLU_STRUMPACK_ROCM_LIBRARIES})
     endif()
     string(REPLACE ";" "$<SEMICOLON>" STRUMPACK_REQUIRED_PACKAGES "${STRUMPACK_REQUIRED_PACKAGES}")
@@ -289,7 +296,7 @@ Intel C++ compiler for MUMPS and STRUMPACK dependencies")
 
   # Configure MUMPS
   if(PALACE_WITH_MUMPS)
-    set(MUMPS_REQUIRED_PACKAGES "METIS" "LAPACK" "BLAS" "MPI" "MPI_Fortran" "Threads")
+    set(MUMPS_REQUIRED_PACKAGES "ParMETIS" "METIS" "LAPACK" "BLAS" "MPI" "MPI_Fortran" "Threads")
     if(PALACE_WITH_OPENMP)
       list(APPEND MUMPS_REQUIRED_PACKAGES "OpenMP")
     endif()
@@ -300,6 +307,30 @@ Intel C++ compiler for MUMPS and STRUMPACK dependencies")
       "-DMUMPS_REQUIRED_LIBRARIES=${SCALAPACK_LIBRARIES}$<SEMICOLON>${STRUMPACK_MUMPS_GFORTRAN_LIBRARY}"
     )
   endif()
+
+  # Configure SUNDIALS
+  if(PALACE_WITH_SUNDIALS)
+    set(SUNDIALS_REQUIRED_PACKAGES "LAPACK" "BLAS" "MPI")
+    if(PALACE_WITH_OPENMP)
+      list(APPEND SUNDIALS_REQUIRED_PACKAGES "OpenMP")
+    endif()
+    if(PALACE_WITH_CUDA)
+      list(APPEND SUNDIALS_REQUIRED_PACKAGES "CUDAToolkit")
+      list(APPEND SUNDIALS_REQUIRED_LIBRARIES ${SUPERLU_STRUMPACK_CUDA_LIBRARIES})
+    endif()
+    string(REPLACE ";" "$<SEMICOLON>" SUNDIALS_REQUIRED_PACKAGES "${SUNDIALS_REQUIRED_PACKAGES}")
+    string(REPLACE ";" "$<SEMICOLON>" SUNDIALS_REQUIRED_LIBRARIES "${SUNDIALS_REQUIRED_LIBRARIES}")
+    list(APPEND MFEM_OPTIONS
+      "-DSUNDIALS_DIR=${CMAKE_INSTALL_PREFIX}"
+      "-DSUNDIALS_REQUIRED_PACKAGES=${SUNDIALS_REQUIRED_PACKAGES}"
+    )
+    if(NOT "${SUNDIALS_REQUIRED_LIBRARIES}" STREQUAL "")
+      list(APPEND MFEM_OPTIONS
+        "-DSUNDIALS_REQUIRED_LIBRARIES=${SUNDIALS_REQUIRED_LIBRARIES}"
+      )
+    endif()
+  endif()
+
 else()
   # Help find dependencies for the internal MFEM build
   # If we trust MFEM's Find<PACKAGE>.cmake module, we can just set <PACKAGE>_DIR and, if
@@ -312,6 +343,7 @@ else()
     "SuperLUDist"
     "STRUMPACK"
     "MUMPS"
+    "SUNDIALS"
   )
   foreach(DEP IN LISTS PALACE_MFEM_DEPS)
     set(${DEP}_DIR "" CACHE STRING "Path to ${DEP} build or installation directory")
@@ -357,16 +389,10 @@ message(STATUS "MFEM_OPTIONS: ${MFEM_OPTIONS_PRINT}")
 
 # A number of patches to MFEM for our use cases
 set(MFEM_PATCH_FILES
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_mfem_device_fixes.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_cmake_cuda_fix.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_strumpack_solver_dev.diff"
   "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_mesh_vis_dev.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_pfespace_constructor_fix.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_par_tet_mesh_fix.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_global_variables_threadsafe.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_stateless_doftrans_threadsafe.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_mesh_partitioner_dev.diff"
-  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_ncmesh_interior_boundary_dev.diff"
+  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_par_tet_mesh_fix_dev.diff"
+  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_gmsh_parser_performance.diff"
+  "${CMAKE_SOURCE_DIR}/extern/patch/mfem/patch_race_condition_fix.diff"
 )
 
 include(ExternalProject)

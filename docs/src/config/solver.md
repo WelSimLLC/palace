@@ -43,13 +43,15 @@ with
 
 `"Order" [1]` :  Finite element order (degree). Arbitrary high-order spaces are supported.
 
-`"PartialAssemblyOrder" [100]` :  Order at which to switch from full assembly of finite
+`"PartialAssemblyOrder" [1]` :  Order at which to switch from full assembly of finite
 element operators to [partial assembly](https://mfem.org/howto/assembly_levels/). Setting
-this parameter equal to 1 will fully activate operator partial assembly on all levels.
+this parameter equal to 1 will fully activate operator partial assembly on all levels, while
+setting it to some large number (greater than the finite element order) will result in
+fully assembled operators as sparse matrices.
 
-`"Device" ["CPU"]` :  The runtime device configuration passed to [MFEM]
-(https://mfem.org/howto/assembly_levels/) in order to activate different options specified
-during configuration. The available options are:
+`"Device" ["CPU"]` :  The runtime device configuration passed to
+[MFEM](https://mfem.org/howto/assembly_levels/) in order to activate different options
+specified during configuration. The available options are:
 
   - `"CPU"`
   - `"GPU"`
@@ -61,33 +63,38 @@ MFEM is built with CUDA (`MFEM_USE_CUDA=ON`) or HIP (`MFEM_USE_HIP=ON`) support.
 added to the list of activated MFEM devices. The `"Debug"` option for MFEM's `debug` device
 is useful for debugging issues associated with GPU-based runs of *Palace*.
 
-`"Backend" [""]` :  Specifies the [libCEED backend]
-(https://libceed.org/en/latest/gettingstarted/#backends) to use for the simulation. If no
-backend is specified, a suitable default backend is selected based on the given
-`config["Solver"]["Device"]`.
+`"Backend" [""]` :  Specifies the
+[libCEED backend](https://libceed.org/en/latest/gettingstarted/#backends) to use for the
+simulation. If no backend is specified, a suitable default backend is selected based on the
+given `config["Solver"]["Device"]`.
 
 `"Eigenmode"` :  Top-level object for configuring the eigenvalue solver for the eigenmode
 simulation type. Thus, this object is only relevant for
 [`config["Problem"]["Type"]: "Eigenmode"`](problem.md#config%5B%22Problem%22%5D).
 
 `"Driven"` :  Top-level object for configuring the frequency domain driven simulation type.
-Thus, this object is only relevant for [`config["Problem"]["Type"]: "Driven"`]
-(problem.md#config%5B%22Problem%22%5D).
+Thus, this object is only relevant for
+[`config["Problem"]["Type"]: "Driven"`](problem.md#config%5B%22Problem%22%5D).
 
 `"Transient"` :  Top-level object for configuring the time domain driven simulation type.
-Thus, this object is only relevant for [`config["Problem"]["Type"]: "Transient"`]
-(problem.md#config%5B%22Problem%22%5D).
+Thus, this object is only relevant for
+[`config["Problem"]["Type"]: "Transient"`](problem.md#config%5B%22Problem%22%5D).
 
 `"Electrostatic"` :  Top-level object for configuring the electrostatic simulation type.
-Thus, this object is only relevant for [`config["Problem"]["Type"]: "Electrostatic"`]
-(problem.md#config%5B%22Problem%22%5D).
+Thus, this object is only relevant for
+[`config["Problem"]["Type"]: "Electrostatic"`](problem.md#config%5B%22Problem%22%5D).
 
 `"Magnetostatic"` :  Top-level object for configuring the magnetostatic simulation type.
-Thus, this object is only relevant for [`config["Problem"]["Type"]: "Magnetostatic"`]
-(problem.md#config%5B%22Problem%22%5D).
+Thus, this object is only relevant for
+[`config["Problem"]["Type"]: "Magnetostatic"`](problem.md#config%5B%22Problem%22%5D).
 
 `"Linear"` :  Top-level object for configuring the linear solver employed by all simulation
 types.
+
+### Advanced solver options
+
+  - `"QuadratureOrderJacobian" [false]`
+  - `"ExtraQuadratureOrder" [0]`
 
 ## `solver["Eigenmode"]`
 
@@ -100,10 +107,8 @@ types.
     "MaxSize": <int>,
     "N": <int>,
     "Save": <int>,
-    "Type": <int>,
-    "ContourTargetUpper": <float>,
-    "ContourAspectRatio": <float>,
-    "ContourNPoints": <int>
+    "Type": <string>,
+    "NonlinearType" : <string>,
 }
 ```
 
@@ -121,30 +126,25 @@ uses the solver default.
 
 `"N" [1]` :  Number of eigenvalues to compute.
 
-`"Save" [0]` :  Number of computed field modes to save to disk for visualization with
-[ParaView](https://www.paraview.org/). Files are saved in the `paraview/` directory under
-the directory specified by [`config["Problem"]["Output"]`]
-(problem.md#config%5B%22Problem%22%5D).
+`"Save" [0]` :  Number of computed field modes to save to disk for
+[visualization with ParaView](../guide/postprocessing.md#Visualization). Files are saved in
+the `paraview/` (and/or `gridfunction/`) directory under the directory specified by
+[`config["Problem"]["Output"]`](problem.md#config%5B%22Problem%22%5D).
 
 `"Type" ["Default"]` :  Specifies the eigenvalue solver to be used in computing the given
 number of eigenmodes of the problem. The available options are:
 
   - `"SLEPc"`
   - `"ARPACK"`
-  - `"FEAST"`
   - `"Default"` :  Use the default eigensolver. Currently, this is the Krylov-Schur
     eigenvalue solver from `"SLEPc"`.
 
-`"ContourTargetUpper" [None]` :  Specifies the upper frequency target of the contour used
-for the FEAST eigenvalue solver, GHz. This option is relevant only for `"Type": "FEAST"`.
+`"NonlinearType" ["Hybrid"]` : Specifies the nonlinear eigenvalue solver to be used for nonlinear problems (e.g. frequency-dependent boundary conditions). The available options are:
 
-`"ContourAspectRatio" [None]` :  Specifies the aspect ratio of the contour used for the
-FEAST eigenvalue solver. This should be greater than zero, where the aspect ratio is the
-ratio of the contour width to the frequency range(`"ContourTargetUpper"` - `"Target"`).
-This option is relevant only for `"Type": "FEAST"`.
+  - `"Hybrid"` : Hybrid algorithm where a (quadratic) polynomial approximation of the nonlinear problem is first solved and the eigenmodes are then refined with a quasi-Newton nonlinear eigensolver.
+  - `"SLP"` : SLEPc's Successive Linear Problem nonlinear eigensolver.
 
-`"ContourNPoints" [4]` :  Number of contour integration points used for the FEAST eigenvalue
-solver. This option is relevant only for `"Type": "FEAST"`.
+`"TargetUpper" [3 * Target]` : Upper end of the frequency target range in which to search for eigenvalues, GHz. Only used in nonlinear problems. Using an inaccurate upper bound (significantly smaller or greater than the largest eigenvalue sought) can negatively affect the convergence of the nonlinear eigensolver.
 
 ### Advanced eigenmode solver options
 
@@ -153,6 +153,11 @@ solver. This option is relevant only for `"Type": "FEAST"`.
   - `"StartVector" [true]`
   - `"StartVectorConstant" [false]`
   - `"MassOrthogonal" [false]`
+  - `"RefineNonlinear" [true]`
+  - `"LinearTol" [1e-3]`
+  - `"PreconditionerLag" [10]`
+  - `"PreconditionerLagTol" [1e-4]`
+  - `"MaxRestart" [2]`
 
 ## `solver["Driven"]`
 
@@ -163,11 +168,12 @@ solver. This option is relevant only for `"Type": "FEAST"`.
     "MaxFreq": <float>,
     "FreqStep": <float>,
     "SaveStep": <int>,
-    "SaveOnlyPorts": <bool>,
+    "Samples": [ ... ],
+    "Save": [<float array>],
+    "Restart": <int>,
     "AdaptiveTol": <float>,
     "AdaptiveMaxSamples": <int>,
-    "AdaptiveMaxCandidates": <int>,
-    "Restart": <int>
+    "AdaptiveConvergenceMemory": <int>
 }
 ```
 
@@ -180,14 +186,28 @@ with
 `"FreqStep" [None]` :  Frequency step size for frequency sweep, GHz.
 
 `"SaveStep" [0]` :  Controls how often, in number of frequency steps, to save computed
-fields to disk for visualization with [ParaView](https://www.paraview.org/). Files are
-saved in the `paraview/` directory under the directory specified by
+fields to disk for [visualization with ParaView](../guide/postprocessing.md#Visualization).
+Files are saved in the `paraview/` (and/or `gridfunction/`) directory under the directory specified by
 [`config["Problem"]["Output"]`](problem.md#config%5B%22Problem%22%5D).
 
-`"SaveOnlyPorts" [false]` :  If set to `true`, postprocessing is only performed for port
-boundaries and skipped for quantities depending on, for example, field integrals over all
-or part of the interior of the computational domain. This can be useful in speeding up
-simulations if only port boundary quantities are required.
+`"Samples" [None]` : Array of [sample
+specifications](solver.md#solver%5B%22Driven%22%5D%5B%22Samples%22%5D) that specify how to
+construct frequency samples. These are all combined to form a sorted and unique collection
+of samples. These samples can be instead of, or in addition to, the interface provided by
+`"MinFreq"`, `"MaxFreq"`, `"FreqStep"` and `"SaveStep"`. See
+[`solver["Driven"]["Samples"]`](solver.md#solver%5B%22Driven%22%5D%5B%22Samples%22%5D) for
+the construction of each of these structs.
+
+`"Save" [None]` : Array of frequencies to save computed fields to disk for [visualization
+with ParaView](../guide/postprocessing.md#Visualization), in addition to those specified by
+`"SaveStep"` in any sample specification. Files are saved in the `paraview/` (and/or `gridfunction/`)
+directory under the directory specified by
+[`config["Problem"]["Output"]`](problem.md#config%5B%22Problem%22%5D).
+
+`"Restart" [1]` :  Iteration (1-based) from which to restart for a partial frequency sweep
+simulation. That is `"Restart": x` will start the frequency sweep from the ``x``-th sample
+rather than the first sample. This indexing is from the *combined* set of frequency samples.
+Not valid for an adaptive fast frequency sweep.
 
 `"AdaptiveTol" [0.0]` :  Relative error convergence tolerance for adaptive frequency sweep.
 If zero, adaptive frequency sweep is disabled and the full-order model is solved at each
@@ -195,22 +215,57 @@ frequency step in the specified interval. If positive, this tolerance is used to
 reliability of the reduced-order model relative to the full-order one in the frequency band
 of interest.
 
-`"AdaptiveMaxSamples" [10]` :  Maximum number of frequency samples used to construct the
-reduced-order model for adaptive fast frequency sweep, if the specified tolerance
-(`"AdaptiveTol"`) is not met first.
+`"AdaptiveMaxSamples" [20]` :  Maximum number of frequency samples used to construct the
+reduced-order model for adaptive fast frequency sweep, if the specified tolerance (`"AdaptiveTol"`)
+is not met first. In simulations with multiple excitations, this is the maximum number of samples
+per excitation.
 
-`"AdaptiveMaxCandidates" [NumFreq/5]` :  Maximum number of frequency samples to consider as
-candidates for computing the reduced-order model error when adaptively sampling new points
-in order to construct the reduced-order for adaptive fast frequency sweep. The default is
-less than the requested number of frequency points in the sweep.
+`"AdaptiveConvergenceMemory" [2]` :  Memory used for assessing convergence of the adaptive
+sampling algorithm for constructing the reduced-order model for adaptive fast frequency
+sweep. For example, a memory of "2" requires two consecutive samples which satisfy the
+error tolerance.
 
-`"Restart" [1]` :  Iteration (1-based) from which to restart for a partial frequency sweep
-simulation. That is, the initial frequency will be computed as
-`"MinFreq" + ("Restart" - 1) * "FreqStep"`.
+### `solver["Driven"]["Samples"]`
 
-### Advanced driven solver options
+```json
+"Samples":
+{
+    "Type": <string>,
+    "MinFreq": <float>,
+    "MaxFreq": <float>,
+    "FreqStep": <float>,
+    "NSample": <float>,
+    "Freq": [<float array>],
+    "SaveStep": <int>,
+    "AddToPROM": <bool>
+}
+```
 
-  - `"AdaptiveAPosterioriError" [false]`
+`"Type" [None]` : The type of range being specified. The list of valid options are
+`"Linear"`, `"Point"`, `"Log"`. For non-ambiguous combinations of other fields, this can be
+inferred for convenience.
+
+`"MinFreq" [None]` :  Lower bound of frequency sweep interval, GHz. Valid for `"Linear"` and `"Log"`.
+
+`"MaxFreq" [None]` :  Upper bound of frequency sweep interval, GHz. Valid for `"Linear"` and `"Log"`.
+
+`"FreqStep" [None]` :  Frequency step size for frequency sweep, GHz. Valid for `"Linear"` only.
+Mutually exclusive with `"NSample"`
+
+`"NSample" [None]` : Number of frequency samples over the specified range. Valid for `"Linear"` and `"Log"`.
+Mutually exclusive with `"FreqStep"`.
+
+`"Freq" [None]` : Explicit frequencies to be sample, GHz. Valid for `"Point"` only.
+
+`"SaveStep" [0]` :  Controls how often, in number of frequency steps, to save computed
+fields to disk for [visualization with ParaView](../guide/postprocessing.md#Visualization).
+Files are saved in the `paraview/` (and/or `gridfunction/`) directory under the directory specified by
+[`config["Problem"]["Output"]`](problem.md#config%5B%22Problem%22%5D).
+
+`"AddToPROM" [false]` : Advanced option to force the inclusion of this sample into the PROM
+when performing an adaptive sweep. This is primarily a debugging tool as the error
+estimation procedure will in general make more efficient selections of sampling points, and
+using this mechanism can result in a significantly larger and less efficient PROM.
 
 ## `solver["Transient"]`
 
@@ -224,7 +279,9 @@ simulation. That is, the initial frequency will be computed as
     "MaxTime": <float>,
     "TimeStep": <float>,
     "SaveStep": <int>,
-    "SaveOnlyPorts": <bool>
+    "Order": <int>,
+    "RelTol": <float>,
+    "AbsTol": <float>
 }
 ```
 
@@ -234,14 +291,12 @@ with
 the second-order system of differential equations. The available options are:
 
   - `"GeneralizedAlpha"` :  The second-order implicit generalized-``\alpha`` method with
-    ``\rho_\inf = 1.0``. This scheme is unconditionally stable.
-  - `"NewmarkBeta"` :  The second-order implicit Newmark-``\beta`` method with
-    ``\beta = 1/4`` and ``\gamma = 1/2``. This scheme is unconditionally stable.
-  - `"CentralDifference"` :  The second-order explicit central difference method, obtained
-    by setting ``\beta = 0`` and ``\gamma = 1/2`` in the Newmark-``\beta`` method. In this
-    case, the maximum eigenvalue of the system operator is estimated at the start of the
-    simulation and used to restrict the simulation time step to below the maximum stability
-    time step.
+    ``\rho_{\inf} = 1.0``. This scheme is unconditionally stable.
+  - `"ARKODE"` :  SUNDIALS ARKode implicit Runge-Kutta scheme applied to the first-order
+    ODE system for the electric field with adaptive time-stepping. This option is only available when *Palace* has been [built with SUNDIALS support](../install.md#Configuration-options).
+  - `"CVODE"` :  SUNDIALS CVODE implicit multistep method scheme applied to the first-order
+    ODE system for the electric field with adaptive time-stepping. This option is only available when *Palace* has been [built with SUNDIALS support](../install.md#Configuration-options).
+  - `"RungeKutta"` : Two stage, singly diagonal implicit Runge-Kutta (SDIRK) method. Second order and L-stable.
   - `"Default"` :  Use the default `"GeneralizedAlpha"` time integration scheme.
 
 `"Excitation" [None]` :  Controls the time dependence of the source excitation. The
@@ -272,14 +327,19 @@ start from rest at ``t = 0.0``.
 `"TimeStep" [None]` :  Uniform time step size for time integration, ns.
 
 `"SaveStep" [0]` :  Controls how often, in number of time steps, to save computed fields to
-disk for visualization with [ParaView](https://www.paraview.org/). Files are saved in the
-`paraview/` directory under the directory specified by [`config["Problem"]["Output"]`]
-(problem.md#config%5B%22Problem%22%5D).
+disk for [visualization with ParaView](../guide/postprocessing.md#Visualization). Files are
+saved in the `paraview/` (and/or `gridfunction/`) directory under the directory specified by
+[`config["Problem"]["Output"]`](problem.md#config%5B%22Problem%22%5D).
 
-`"SaveOnlyPorts" [false]` :  If set to `true`, postprocessing is only performed for port
-boundaries and skipped for quantities depending on, for example, field integrals over all
-or part of the interior of the computational domain. This can be useful in speeding up
-simulations if only port boundary quantities are required.
+`"Order" [2]` :  Order of the adaptive Runge-Kutta integrators or maximum order of the
+multistep method, must be within `[2,5]`. Should only be specified if `"Type"` is `"ARKODE"`
+or `"CVODE"`.
+
+`"RelTol" [1e-4]` :  Relative tolerance used in adaptive time-stepping schemes. Should only
+be specified if `"Type"` is `"ARKODE"` or `"CVODE"`.
+
+`"AbsTol" [1e-9]` :  Absolute tolerance used in adaptive time-stepping schemes. Should only
+be specified if `"Type"` is `"ARKODE"` or `"CVODE"`.
 
 ## `solver["Electrostatic"]`
 
@@ -293,10 +353,10 @@ simulations if only port boundary quantities are required.
 with
 
 `"Save" [0]` :  Number of computed electric field solutions to save to disk for
-visualization with [ParaView](https://www.paraview.org/), ordered by the entries in the
-computed capacitance matrix. Files are saved in the `paraview/` directory under the
-directory specified by [`config["Problem"]["Output"]`]
-(problem.md#config%5B%22Problem%22%5D).
+[visualization with ParaView](../guide/postprocessing.md#Visualization), ordered by the
+entries in the computed capacitance matrix. Files are saved in the `paraview/` (and/or `gridfunction/`) directory
+under the directory specified by
+[`config["Problem"]["Output"]`](problem.md#config%5B%22Problem%22%5D).
 
 ## `solver["Magnetostatic"]`
 
@@ -310,10 +370,10 @@ directory specified by [`config["Problem"]["Output"]`]
 with
 
 `"Save" [0]` :  Number of computed magnetic field solutions to save to disk for
-visualization with [ParaView](https://www.paraview.org/), ordered by the entries in the
-computed inductance matrix. Files are saved in the `paraview/` directory under the
-directory specified by [`config["Problem"]["Output"]`]
-(problem.md#config%5B%22Problem%22%5D).
+[visualization with ParaView](../guide/postprocessing.md#Visualization)), ordered by the
+entries in the computed inductance matrix. Files are saved in the `paraview/` (and/or `gridfunction/`) directory
+under the directory specified by
+[`config["Problem"]["Output"]`](problem.md#config%5B%22Problem%22%5D).
 
 ## `solver["Linear"]`
 
@@ -332,18 +392,23 @@ directory specified by [`config["Problem"]["Output"]`]
     "MGSmoothOrder": <int>,
     "PCMatReal": <bool>,
     "PCMatShifted": <bool>,
+    "ComplexCoarseSolve": <bool>,
+    "DropSmallEntries": <bool>,
     "PCSide": <string>,
     "DivFreeTol": <float>,
     "DivFreeMaxIts": <float>,
+    "EstimatorTol": <float>,
+    "EstimatorMaxIts": <float>,
+    "EstimatorMG": <bool>,
     "GSOrthogonalization": <string>
 }
 ```
 
 with
 
-`"Type" ["Default"]` :  Specifies the solver used for [preconditioning]
-(https://en.wikipedia.org/wiki/Preconditioner) the linear system of equations to be solved
-for each simulation type. The available options are:
+`"Type" ["Default"]` :  Specifies the solver used for
+[preconditioning](https://en.wikipedia.org/wiki/Preconditioner) the linear system of
+equations to be solved for each simulation type. The available options are:
 
   - `"SuperLU"` :  The [SuperLU_DIST](https://github.com/xiaoyeli/superlu_dist) sparse
     direct solver in real double precision is used to factorize the system matrix. For
@@ -358,32 +423,34 @@ for each simulation type. The available options are:
   - `"MUMPS"` :  The [MUMPS](http://mumps.enseeiht.fr/) sparse direct solver in real double
     precision is used to factorize the system matrix. For frequency domain problems this
     uses a real approximation to the true complex linear system matrix. This option is only
-    available when *Palace* has been [built with MUMPS support]
-    (../install.md#Configuration-options).
-  - `"AMS"` :  Hypre's [Auxiliary-space Maxwell Solver (AMS)]
-    (https://hypre.readthedocs.io/en/latest/solvers-ams.html), an algebraic multigrid
-    (AMG)-based preconditioner.
-  - `"BoomerAMG"` :  The [BoomerAMG]
-    (https://hypre.readthedocs.io/en/latest/solvers-boomeramg.html) algebraic multigrid
-    solver from Hypre.
+    available when *Palace* has been
+    [built with MUMPS support](../install.md#Configuration-options).
+  - `"AMS"` :  Hypre's
+    [Auxiliary-space Maxwell Solver (AMS)](https://hypre.readthedocs.io/en/latest/solvers-ams.html),
+    an algebraic multigrid (AMG)-based preconditioner.
+  - `"BoomerAMG"` :  The
+    [BoomerAMG](https://hypre.readthedocs.io/en/latest/solvers-boomeramg.html) AMG solver
+    from Hypre.
+  - `"Jacobi"` :  Diagonal scaling with a simple Jacobi preconditioner (not recommended in
+    general).
   - `"Default"` :  Use the default `"AMS"` solver for simulation types involving definite or
     semi-definite curl-curl operators (time domain problems as well as magnetostatics). For
     frequency domain problems, use a sparse direct solver if available, otherwise uses
     `"AMS"`. For electrostatic problems, uses `"BoomerAMG"`.
 
-`"KSPType" ["Default"]` :  Specifies the iterative [Krylov subspace]
-(https://en.wikipedia.org/wiki/Krylov_subspace) solver type for solving linear systems of
-equations arising for each simulation type. The available options are:
+`"KSPType" ["Default"]` :  Specifies the iterative
+[Krylov subspace](https://en.wikipedia.org/wiki/Krylov_subspace) solver type for solving
+linear systems of equations arising for each simulation type. The available options are:
 
   - `"CG"`
   - `"GMRES"`
   - `"FGMRES"`
   - `"Default"` :  Use the default `"GMRES"` Krylov subspace solver for frequency domain
-    problems, that is when [`config["Problem"]["Type"]`]
-    (problem.md#config%5B%22Problem%22%5D) is `"Eigenmode"` or `"Driven"`. For the other
-    simulation types, the linear system matrix is always real and symmetric positive
-    definite (SPD) and the preconditioned conjugate gradient method (`"CG"`) is used as the
-    Krylov solver.
+    problems, that is when
+    [`config["Problem"]["Type"]`](problem.md#config%5B%22Problem%22%5D) is `"Eigenmode"` or
+    `"Driven"`. For the other simulation types, the linear system matrix is always real and
+    symmetric positive definite (SPD) and the preconditioned conjugate gradient method
+    (`"CG"`) is used as the Krylov solver.
 
 `"Tol" [1.0e-6]` :  Relative residual convergence tolerance for the iterative linear solver.
 
@@ -392,27 +459,32 @@ equations arising for each simulation type. The available options are:
 `"MaxSize" [0]` :  Maximum Krylov space size for the GMRES and FGMRES solvers. A value less
 than 1 defaults to the value specified by `"MaxIts"`.
 
-`"MGMaxLevels" [100]` :  Chose whether to enable [geometric multigrid preconditioning]
-(https://en.wikipedia.org/wiki/Multigrid_method) which uses p- and h-multigrid coarsening as
-available to construct the multigrid hierarchy. The solver specified by `"Type"` is used on
-the coarsest level. Relaxation on the fine levels is performed with Chebyshev smoothing.
+`"MGMaxLevels" [100]` : When greater than 1, enable the [geometric multigrid
+preconditioning](https://en.wikipedia.org/wiki/Multigrid_method), which uses p-
+and h-multigrid coarsening as available to construct the multigrid hierarchy.
+The solver specified by `"Type"` is used on the coarsest level. Relaxation on
+the fine levels is performed with Chebyshev smoothing.
 
 `"MGCoarsenType" ["Logarithmic"]` :  Coarsening to create p-multigrid levels.
 
   - `"Logarithmic"`
   - `"Linear"`
 
-`"MGCycleIts" [1]` :  Number of V-cycle iterations per preconditioner application for
-multigrid preconditioners (when `"UseMultigrid"` is `true` or `"Type"` is `"AMS"` or
+`"MGCycleIts" [1]` : Number of V-cycle iterations per preconditioner application
+for multigrid preconditioners (when the geometric multigrid preconditioner is
+enabled, i.e. when `MGMaxLevels` > 1, or when `"Type"` is `"AMS"` or
 `"BoomerAMG"`).
 
-`"MGSmoothIts" [1]` :  Number of pre- and post-smooth iterations used for multigrid
-preconditioners (when `"UseMultigrid"` is `true` or `"Type"` is `"AMS"` or `"BoomerAMG"`).
+`"MGSmoothIts" [1]` : Number of pre- and post-smooth iterations used for
+multigrid preconditioners (when the geometric multigrid preconditioner is
+enabled, i.e. when `MGMaxLevels` > 1, or when `"Type"` is `"AMS"` or
+`"BoomerAMG"`).
 
 `"MGSmoothOrder" [0]` :  Order of polynomial smoothing for geometric multigrid
-preconditioning (when `"UseMultigrid"` is `true`). A value less than 1 defaults to twice
-the solution order given in [`config["Solver"]["Order"]`]
-(problem.md#config%5B%22Solver%22%5D) or 4, whichever is larger.
+preconditioning. A value less than 1 defaults to twice
+the solution order given in
+[`config["Solver"]["Order"]`](problem.md#config%5B%22Solver%22%5D) or 4, whichever is
+larger.
 
 `"PCMatReal" [false]` :  When set to `true`, constructs the preconditioner for frequency
 domain problems using a real-valued approximation of the system matrix. This is always
@@ -423,6 +495,12 @@ domain problems using a positive definite approximation of the system matrix by 
 the sign for the mass matrix contribution, which can help performance at high frequencies
 (relative to the lowest nonzero eigenfrequencies of the model).
 
+`"ComplexCoarseSolve" [false]` : When set to `true`, the coarse-level solver uses the true
+complex-valued system matrix. When set to `false`, the real-valued approximation is used.
+
+`"DropSmallEntries" [true]` : When set to `true`, entries smaller than the double precision
+machine epsilon are dropped from the system matrix used in the sparse direct solver.
+
 `"PCSide" ["Default"]` :  Side for preconditioning. Not all options are available for all
 iterative solver choices, and the default choice depends on the iterative solver used.
 
@@ -431,16 +509,31 @@ iterative solver choices, and the default choice depends on the iterative solver
   - `"Default"`
 
 `"DivFreeTol" [1.0e-12]` :  Relative tolerance for divergence-free cleaning used in the
-eigenmode simulation type.
+eigenmode simulation type. Ignored if non-zero Floquet wave vector is specified in
+[`config["Boundaries"]["Periodic"]["FloquetWaveVector"]`](boundaries.md##boundaries%5B%%22Periodic%22%5D%22FloquetWaveVector%22%5D)
+or
+[`config["Boundaries"]["FloquetWaveVector"]`](boundaries.md##boundaries%5B%%22FloquetWaveVector%22%5D),
+or non-zero
+[`config["Domains"]["Materials"]["LondonDepth"]`](domains.md##domains%5B%22Materials%22%5D%5B%22LondonDepth%22%5D)
+is specified.
 
 `"DivFreeMaxIts" [1000]` :  Maximum number of iterations for divergence-free cleaning use in
-the eigenmode simulation type.
+the eigenmode simulation type. Ignored if non-zero Floquet wave vector is specified in
+[`config["Boundaries"]["Periodic"]["FloquetWaveVector"]`](boundaries.md##boundaries%5B%%22Periodic%22%5D%22FloquetWaveVector%22%5D)
+or
+[`config["Boundaries"]["FloquetWaveVector"]`](boundaries.md##boundaries%5B%%22FloquetWaveVector%22%5D),
+or non-zero
+[`config["Domains"]["Materials"]["LondonDepth"]`](domains.md##domains%5B%22Materials%22%5D%5B%22LondonDepth%22%5D)
+is specified.
 
-`"EstimatorTol" [1e-6]` :  Relative tolerance for flux projection used in the
+`"EstimatorTol" [1.0e-6]` :  Relative tolerance for flux projection used in the
 error estimate calculation.
 
-`"EstimatorMaxIts" [100]` :  Maximum number of iterations for flux projection use in
-the error estimate calculation.
+`"EstimatorMaxIts" [10000]` :  Maximum number of iterations for flux projection use in the
+error estimate calculation.
+
+`"EstimatorMG" [false]` :  Set to true in order to enable multigrid preconditioner with AMG
+coarse solve for the error estimate linear solver, instead of just Jacobi.
 
 `"GSOrthogonalization" ["MGS"]` :  Gram-Schmidt variant used to explicitly orthogonalize
 vectors in Krylov subspace methods or other parts of the code.
@@ -452,16 +545,20 @@ vectors in Krylov subspace methods or other parts of the code.
 ### Advanced linear solver options
 
   - `"InitialGuess" [true]`
+  - `"MGUseMesh" [true]`
   - `"MGAuxiliarySmoother" [true]`
   - `"MGSmoothEigScaleMax" [1.0]`
   - `"MGSmoothEigScaleMin" [0.0]`
   - `"MGSmoothChebyshev4th" [true]`
+  - `"ReorderingReuse" [true]`
   - `"ColumnOrdering" ["Default"]` :  `"METIS"`, `"ParMETIS"`,`"Scotch"`, `"PTScotch"`,
-    `"Default"`
+    `"PORD"`, `"AMD"`, `"RCM"`, `"Default"`
   - `"STRUMPACKCompressionType" ["None"]` :  `"None"`, `"BLR"`, `"HSS"`, `"HODLR"`, `"ZFP"`,
     `"BLR-HODLR"`, `"ZFP-BLR-HODLR"`
   - `"STRUMPACKCompressionTol" [1.0e-3]`
   - `"STRUMPACKLossyPrecision" [16]`
   - `"STRUMPACKButterflyLevels" [1]`
-  - `"SuperLU3D" [false]`
-  - `"AMSVector" [false]`
+  - `"SuperLU3DCommunicator" [false]`
+  - `"AMSVectorInterpolation" [false]`
+  - `"AMSSingularOperator" [false]`
+  - `"AMGAggressiveCoarsening" [false]`
