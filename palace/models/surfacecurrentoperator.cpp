@@ -3,7 +3,6 @@
 
 #include "surfacecurrentoperator.hpp"
 
-#include <string>
 #include "fem/coefficient.hpp"
 #include "utils/communication.hpp"
 #include "utils/geodata.hpp"
@@ -13,26 +12,23 @@ namespace palace
 {
 
 SurfaceCurrentData::SurfaceCurrentData(const config::SurfaceCurrentData &data,
-                                       mfem::ParFiniteElementSpace &h1_fespace)
+                                       const mfem::ParMesh &mesh)
 {
   // Construct the source elements allowing for a possible multielement surface current
   // sources.
   for (const auto &elem : data.elements)
   {
-    mfem::Array<int> attr_marker;
-    mesh::AttrToMarker(h1_fespace.GetParMesh()->bdr_attributes.Size()
-                           ? h1_fespace.GetParMesh()->bdr_attributes.Max()
-                           : 0,
-                       elem.attributes, attr_marker);
+    mfem::Array<int> attr_list;
+    attr_list.Append(elem.attributes.data(), elem.attributes.size());
     switch (elem.coordinate_system)
     {
-      case config::internal::ElementData::CoordinateSystem::CYLINDRICAL:
+      case CoordinateSystem::CYLINDRICAL:
         elems.push_back(
-            std::make_unique<CoaxialElementData>(elem.direction, attr_marker, h1_fespace));
+            std::make_unique<CoaxialElementData>(elem.direction, attr_list, mesh));
         break;
-      case config::internal::ElementData::CoordinateSystem::CARTESIAN:
+      case CoordinateSystem::CARTESIAN:
         elems.push_back(
-            std::make_unique<UniformElementData>(elem.direction, attr_marker, h1_fespace));
+            std::make_unique<UniformElementData>(elem.direction, attr_list, mesh));
         break;
     }
   }
@@ -45,25 +41,24 @@ double SurfaceCurrentData::GetExcitationCurrent() const
 }
 
 SurfaceCurrentOperator::SurfaceCurrentOperator(const IoData &iodata,
-                                               mfem::ParFiniteElementSpace &h1_fespace)
+                                               const mfem::ParMesh &mesh)
 {
   // Set up surface current source boundaries.
-  SetUpBoundaryProperties(iodata, h1_fespace);
-  PrintBoundaryInfo(iodata, *h1_fespace.GetParMesh());
+  SetUpBoundaryProperties(iodata, mesh);
+  PrintBoundaryInfo(iodata, mesh);
 }
 
-void SurfaceCurrentOperator::SetUpBoundaryProperties(
-    const IoData &iodata, mfem::ParFiniteElementSpace &h1_fespace)
+void SurfaceCurrentOperator::SetUpBoundaryProperties(const IoData &iodata,
+                                                     const mfem::ParMesh &mesh)
 {
   // Check that surface current boundary attributes have been specified correctly.
-  int bdr_attr_max = h1_fespace.GetParMesh()->bdr_attributes.Size()
-                         ? h1_fespace.GetParMesh()->bdr_attributes.Max()
-                         : 0;
   if (!iodata.boundaries.current.empty())
   {
-    mfem::Array<int> bdr_attr_marker(bdr_attr_max);
+    int bdr_attr_max = mesh.bdr_attributes.Size() ? mesh.bdr_attributes.Max() : 0;
+    mfem::Array<int> bdr_attr_marker(bdr_attr_max), source_marker(bdr_attr_max);
     bdr_attr_marker = 0;
-    for (auto attr : h1_fespace.GetParMesh()->bdr_attributes)
+    source_marker = 0;
+    for (auto attr : mesh.bdr_attributes)
     {
       bdr_attr_marker[attr - 1] = 1;
     }
@@ -78,6 +73,10 @@ void SurfaceCurrentOperator::SetUpBoundaryProperties(
                       "correspond to boundaries in the mesh!");
           MFEM_VERIFY(bdr_attr_marker[attr - 1],
                       "Unknown surface current boundary attribute " << attr << "!");
+          MFEM_VERIFY(
+              !source_marker[attr - 1],
+              "Boundary attribute is assigned to more than one surface current source!");
+          source_marker[attr - 1] = 1;
         }
       }
     }
@@ -86,28 +85,12 @@ void SurfaceCurrentOperator::SetUpBoundaryProperties(
   // Set up surface current data structures.
   for (const auto &[idx, data] : iodata.boundaries.current)
   {
-    sources.try_emplace(idx, data, h1_fespace);
-  }
-
-  // Mark selected boundary attributes from the mesh for current sources.
-  source_marker.SetSize(bdr_attr_max);
-  source_marker = 0;
-  for (const auto &[idx, data] : sources)
-  {
-    for (const auto &elem : data.GetElements())
-    {
-      for (int i = 0; i < elem->GetMarker().Size(); i++)
-      {
-        MFEM_VERIFY(
-            !(source_marker[i] && elem->GetMarker()[i]),
-            "Boundary attribute is assigned to more than one surface current source!");
-        source_marker[i] = source_marker[i] || elem->GetMarker()[i];
-      }
-    }
+    sources.try_emplace(idx, data, mesh);
   }
 }
 
-void SurfaceCurrentOperator::PrintBoundaryInfo(const IoData &iodata, mfem::ParMesh &mesh)
+void SurfaceCurrentOperator::PrintBoundaryInfo(const IoData &iodata,
+                                               const mfem::ParMesh &mesh)
 {
   if (sources.empty())
   {
@@ -116,27 +99,12 @@ void SurfaceCurrentOperator::PrintBoundaryInfo(const IoData &iodata, mfem::ParMe
   Mpi::Print("\nConfiguring surface current excitation source term at attributes:\n");
   for (const auto &[idx, data] : sources)
   {
-    for (const auto &elem : data.GetElements())
+    for (const auto &elem : data.elems)
     {
-      for (int i = 0; i < elem->GetMarker().Size(); i++)
+      for (auto attr : elem->GetAttrList())
       {
-        if (!elem->GetMarker()[i])
-        {
-          continue;
-        }
-        const int attr = i + 1;
-        mfem::Vector nor;
-        mesh::GetSurfaceNormal(mesh, attr, nor);
-        Mpi::Print(" {:d}: Index = {:d}", attr, idx);
-        if (mesh.SpaceDimension() == 3)
-        {
-          Mpi::Print(", n = ({:+.1f}, {:+.1f}, {:+.1f})", nor(0), nor(1), nor(2));
-        }
-        else
-        {
-          Mpi::Print(", n = ({:+.1f}, {:+.1f})", nor(0), nor(1));
-        }
-        Mpi::Print("\n");
+        Mpi::Print(" {:d}: Index = {:d}, n = ({:+.1f})\n", attr, idx,
+                   fmt::join(mesh::GetSurfaceNormal(mesh, attr), ","));
       }
     }
   }
@@ -147,6 +115,19 @@ const SurfaceCurrentData &SurfaceCurrentOperator::GetSource(int idx) const
   auto it = sources.find(idx);
   MFEM_VERIFY(it != sources.end(), "Unknown current source index requested!");
   return it->second;
+}
+
+mfem::Array<int> SurfaceCurrentOperator::GetAttrList() const
+{
+  mfem::Array<int> attr_list;
+  for (const auto &[idx, data] : sources)
+  {
+    for (const auto &elem : data.elems)
+    {
+      attr_list.Append(elem->GetAttrList());
+    }
+  }
+  return attr_list;
 }
 
 void SurfaceCurrentOperator::AddExcitationBdrCoefficients(SumVectorCoefficient &fb)
@@ -173,10 +154,10 @@ void SurfaceCurrentOperator::AddExcitationBdrCoefficients(const SurfaceCurrentDa
 {
   // Add excited boundaries to the linear form, with a unit current distributed across
   // all elements of the current source in parallel.
-  for (const auto &elem : data.GetElements())
+  for (const auto &elem : data.elems)
   {
-    const double Jinc = 1.0 / (elem->GetGeometryWidth() * data.GetElements().size());
-    fb.AddCoefficient(elem->GetModeCoefficient(-Jinc), elem->GetMarker());
+    const double Jinc = 1.0 / (elem->GetGeometryWidth() * data.elems.size());
+    fb.AddCoefficient(elem->GetModeCoefficient(-Jinc));
   }
 }
 

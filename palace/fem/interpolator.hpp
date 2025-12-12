@@ -11,7 +11,9 @@
 namespace palace
 {
 
+class GridFunction;
 class IoData;
+class FiniteElementSpace;
 
 //
 // A class which wraps MFEM's GSLIB interface for high-order field interpolation.
@@ -24,16 +26,33 @@ private:
 #endif
   std::vector<int> op_idx;
 
-public:
-  InterpolationOperator(const IoData &iodata, mfem::ParMesh &mesh);
-
-  const auto &GetProbes() const { return op_idx; }
+  int v_dim_fes;  // dimension of interpolated vector from NDSpace
 
   std::vector<double> ProbeField(const mfem::ParGridFunction &U);
 
-  std::vector<std::complex<double>> ProbeField(const mfem::ParComplexGridFunction &U,
-                                               bool has_imaginary);
+public:
+  InterpolationOperator(const IoData &iodata, FiniteElementSpace &nd_space);
+
+  auto GetVDim() const { return v_dim_fes; }
+  const auto &GetProbes() const { return op_idx; }
+
+  std::vector<std::complex<double>> ProbeField(const GridFunction &U);
 };
+
+namespace fem
+{
+
+// Interpolate a function on a serial or parallel mesh to a different mesh, using GSLIB.
+// Similar to MFEM's field-interp miniapp.
+void InterpolateFunction(const mfem::GridFunction &U, mfem::GridFunction &V);
+
+// Interpolate a function at a specific list of points, specified using the provided
+// ordering. The output vector values are always arranged byVDIM.
+void InterpolateFunction(const mfem::Vector &xyz, const mfem::GridFunction &U,
+                         mfem::Vector &V,
+                         mfem::Ordering::Type ordering = mfem::Ordering::byNODES);
+
+}  // namespace fem
 
 }  // namespace palace
 

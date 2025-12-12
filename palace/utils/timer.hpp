@@ -27,40 +27,56 @@ public:
   enum Index
   {
     INIT = 0,
-    CONSTRUCT,
-    WAVEPORT,  // Wave port solver
-    SOLVE,
-    PRECONDITIONER,      // Linear solver
-    COARSESOLVE,         // Linear solver
-    ESTIMATION,          // Estimation
-    CONSTRUCTESTIMATOR,  // Construction of estimator
-    SOLVEESTIMATOR,      // Evaluation of estimator
-    ADAPTATION,          // Adaptation
-    REBALANCE,           // Rebalancing
-    CONSTRUCTPROM,       // Adaptive frequency sweep
-    SOLVEPROM,           // Adaptive frequency sweep
-    POSTPRO,
-    IO,
+    MESH_PREPROCESS,       // Preprocessing mesh
+    CONSTRUCT,             // Space and operator construction
+    WAVE_PORT,             // Wave port solver
+    KSP,                   // Linear solver
+    KSP_SETUP,             // Linear solver setup
+    KSP_PRECONDITIONER,    // Linear solver preconditioner
+    KSP_COARSE_SOLVE,      // Linear solver coarse-level solve
+    TS,                    // Time integrator
+    EPS,                   // Eigenvalue problem solver
+    DIV_FREE,              // Divergence-free projection
+    CONSTRUCT_PROM,        // Adaptive frequency sweep offline
+    SOLVE_PROM,            // Adaptive frequency sweep online
+    ESTIMATION,            // Error estimation
+    CONSTRUCT_ESTIMATOR,   // Construction of estimator
+    SOLVE_ESTIMATOR,       // Evaluation of estimator
+    ADAPTATION,            // Adaptation
+    REBALANCE,             // Rebalancing
+    POSTPRO,               // Solution postprocessing
+    POSTPRO_FARFIELD,      // Computing far-fields
+    POSTPRO_PARAVIEW,      // Paraview calculations and I/O
+    POSTPRO_GRIDFUNCTION,  // MFEM gridfunction calculations and I/O
+    IO,                    // Disk I/O
     TOTAL,
-    NUMTIMINGS
+    NUM_TIMINGS
   };
 
   // clang-format off
   inline static const std::vector<std::string> descriptions{
       "Initialization",
+      "  Mesh Preprocessing",
       "Operator Construction",
       "  Wave Ports",
-      "Solve",
+      "Linear Solve",
+      "  Setup",
       "  Preconditioner",
       "  Coarse Solve",
+      "Time Stepping",
+      "Eigenvalue Solve",
+      "Div.-Free Projection",
+      "PROM Construction",
+      "PROM Solve",
       "Estimation",
       "  Construction",
       "  Solve",
       "Adaptation",
       "  Rebalancing",
-      "PROM Construction",
-      "PROM Solve",
       "Postprocessing",
+      "  Far Fields",
+      "  Paraview",
+      "  Grid function",
       "Disk IO",
       "Total"};
   // clang-format on
@@ -73,7 +89,7 @@ private:
 
 public:
   Timer()
-    : start_time(Now()), last_lap_time(start_time), data(NUMTIMINGS), counts(NUMTIMINGS)
+    : start_time(Now()), last_lap_time(start_time), data(NUM_TIMINGS), counts(NUM_TIMINGS)
   {
   }
 
@@ -91,18 +107,25 @@ public:
   // Return the time elapsed since timer creation.
   Duration TimeFromStart() const { return Now() - start_time; }
 
-  // Save a timing step by adding a duration, without lapping; optionally, count it.
-  Duration SaveTime(Index idx, Duration time, bool count_it = true)
-  {
-    data[idx] += time;
-    counts[idx] += count_it;
-    return data[idx];
-  }
-
   // Lap and record a timing step.
   Duration MarkTime(Index idx, bool count_it = true)
   {
-    return SaveTime(idx, Lap(), count_it);
+    return MarkTime(idx, Lap(), count_it);
+  }
+
+  // Record a timing step by adding a duration, without lapping; optionally, count it.
+  Duration MarkTime(Index idx, Duration time, bool count_it = true)
+  {
+    if (idx == Timer::TOTAL)
+    {
+      data[idx] = time;
+    }
+    else
+    {
+      data[idx] += time;
+    }
+    counts[idx] += count_it;
+    return data[idx];
   }
 
   // Provide map-like read-only access to the timing data.
@@ -119,44 +142,48 @@ class BlockTimer
 private:
   inline static Timer timer;
   inline static std::stack<Index> stack;
+  bool count;
 
   // Reduce timing information across MPI ranks.
   static void Reduce(MPI_Comm comm, std::vector<double> &data_min,
                      std::vector<double> &data_max, std::vector<double> &data_avg)
   {
-    data_min.resize(Timer::NUMTIMINGS);
-    data_max.resize(Timer::NUMTIMINGS);
-    data_avg.resize(Timer::NUMTIMINGS);
-    for (int i = Timer::INIT; i < Timer::NUMTIMINGS; i++)
+    data_min.resize(Timer::NUM_TIMINGS);
+    data_max.resize(Timer::NUM_TIMINGS);
+    data_avg.resize(Timer::NUM_TIMINGS);
+    for (int i = Timer::INIT; i < Timer::NUM_TIMINGS; i++)
     {
       data_min[i] = data_max[i] = data_avg[i] = timer.Data((Timer::Index)i);
     }
 
-    Mpi::GlobalMin(Timer::NUMTIMINGS, data_min.data(), comm);
-    Mpi::GlobalMax(Timer::NUMTIMINGS, data_max.data(), comm);
-    Mpi::GlobalSum(Timer::NUMTIMINGS, data_avg.data(), comm);
+    Mpi::GlobalMin(Timer::NUM_TIMINGS, data_min.data(), comm);
+    Mpi::GlobalMax(Timer::NUM_TIMINGS, data_max.data(), comm);
+    Mpi::GlobalSum(Timer::NUM_TIMINGS, data_avg.data(), comm);
 
     const int np = Mpi::Size(comm);
-    for (int i = Timer::INIT; i < Timer::NUMTIMINGS; i++)
+    for (int i = Timer::INIT; i < Timer::NUM_TIMINGS; i++)
     {
       data_avg[i] /= np;
     }
   }
 
 public:
-  BlockTimer(Index i)
+  BlockTimer(Index i, bool count = true) : count(count)
   {
     // Start timing when entering the block, interrupting whatever we were timing before.
     // Take note of what we are now timing.
-    stack.empty() ? timer.Lap() : timer.MarkTime(stack.top(), false);
-    stack.push(i);
+    if (count)
+    {
+      stack.empty() ? timer.Lap() : timer.MarkTime(stack.top(), false);
+      stack.push(i);
+    }
   }
 
   ~BlockTimer()
   {
-    // When a BlockTimer is no longer in scope, record the time.
-    // (check whether stack is empty in case Finalize was called already.)
-    if (!stack.empty())
+    // When a BlockTimer is no longer in scope, record the time (check whether stack is
+    // empty in case the timer has already been finalized).
+    if (count && !stack.empty())
     {
       timer.MarkTime(stack.top());
       stack.pop();
@@ -174,7 +201,7 @@ public:
       timer.MarkTime(stack.top());
       stack.pop();
     }
-    timer.SaveTime(Timer::TOTAL, timer.TimeFromStart());
+    timer.MarkTime(Timer::TOTAL, timer.TimeFromStart());
 
     // Reduce timing data.
     std::vector<double> data_min, data_max, data_avg;
@@ -189,7 +216,7 @@ public:
                "Elapsed Time Report (s)", h, "Min.", w, "Max.", w, "Avg.", w);
     // clang-format on
     Mpi::Print(comm, "{}\n", std::string(h + 3 * w, '='));
-    for (int i = Timer::INIT; i < Timer::NUMTIMINGS; i++)
+    for (int i = Timer::INIT; i < Timer::NUM_TIMINGS; i++)
     {
       if (timer.Counts((Timer::Index)i) > 0)
       {

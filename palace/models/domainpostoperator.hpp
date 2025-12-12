@@ -7,47 +7,48 @@
 #include <map>
 #include <memory>
 #include <utility>
-#include <mfem.hpp>
 #include "linalg/operator.hpp"
+#include "linalg/vector.hpp"
 
 namespace palace
 {
 
+class GridFunction;
+class FiniteElementSpace;
 class IoData;
 class MaterialOperator;
 
 //
-// A class handling domain postprocessing.
+// Class to handle domain energy postprocessing. We use a leading factor of 1/2 instead of
+// 1/4 even though the eigenmodes are peak phasors and not RMS normalized because the same
+// peak phasors are used to compute the voltages/currents which are 2x the time-averaged
+// values. This correctly yields an EPR of 1 in cases where expected.
 //
 class DomainPostOperator
 {
-private:
-  // Bilinear forms for computing field energy integrals over domains.
-  std::unique_ptr<Operator> M_ND, M_RT;
-  std::map<int, std::pair<std::unique_ptr<Operator>, std::unique_ptr<Operator>>> M_NDi;
-
-  // Temporary vectors for inner product calculations.
-  mutable mfem::Vector D, H;
-
 public:
+  // Temporary vectors for inner product calculations.
+  mutable Vector D, H;
+
+  // Bilinear forms for computing field energy integrals over domains.
+  std::unique_ptr<Operator> M_elec, M_mag;
+  std::map<int, std::pair<std::unique_ptr<Operator>, std::unique_ptr<Operator>>> M_i;
+
   DomainPostOperator(const IoData &iodata, const MaterialOperator &mat_op,
-                     const mfem::ParFiniteElementSpace *nd_fespace,
-                     const mfem::ParFiniteElementSpace *rt_fespace);
+                     const FiniteElementSpace &nd_fespace,
+                     const FiniteElementSpace &rt_fespace);
+  DomainPostOperator(const IoData &iodata, const MaterialOperator &mat_op,
+                     const FiniteElementSpace &fespace);
 
-  // Access underlying bulk loss postprocessing data structures (for keys).
-  const auto &GetEps() const { return M_NDi; }
-  auto SizeEps() const { return M_NDi.size(); }
+  // Get volume integrals computing the electric or magnetic field energy in the entire
+  // domain.
+  double GetElectricFieldEnergy(const GridFunction &E) const;
+  double GetMagneticFieldEnergy(const GridFunction &B) const;
 
-  // Get volume integrals computing bulk electric or magnetic field energy.
-  double GetElectricFieldEnergy(const mfem::ParComplexGridFunction &E) const;
-  double GetElectricFieldEnergy(const mfem::ParGridFunction &E) const;
-  double GetMagneticFieldEnergy(const mfem::ParComplexGridFunction &B) const;
-  double GetMagneticFieldEnergy(const mfem::ParGridFunction &B) const;
-  double GetDomainElectricFieldEnergy(int idx, const mfem::ParComplexGridFunction &E) const;
-  double GetDomainElectricFieldEnergy(int idx, const mfem::ParGridFunction &E) const;
-  double GetDomainElectricFieldEnergyLoss(int idx,
-                                          const mfem::ParComplexGridFunction &E) const;
-  double GetDomainElectricFieldEnergyLoss(int idx, const mfem::ParGridFunction &E) const;
+  // Get volume integrals for the electric or magnetic field energy in a portion of the
+  // domain.
+  double GetDomainElectricFieldEnergy(int idx, const GridFunction &E) const;
+  double GetDomainMagneticFieldEnergy(int idx, const GridFunction &B) const;
 };
 
 }  // namespace palace

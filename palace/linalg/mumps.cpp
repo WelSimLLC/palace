@@ -5,57 +5,46 @@
 
 #if defined(MFEM_USE_MUMPS)
 
-#include "linalg/rap.hpp"
-
 namespace palace
 {
 
 MumpsSolver::MumpsSolver(MPI_Comm comm, mfem::MUMPSSolver::MatType sym,
-                         config::LinearSolverData::SymFactType reorder, double blr_tol,
+                         SymbolicFactorization reorder, double blr_tol, bool reorder_reuse,
                          int print)
   : mfem::MUMPSSolver(comm)
 {
   // Configure the solver (must be called before SetOperator).
   SetPrintLevel(print);
   SetMatrixSymType(sym);
-  if (reorder == config::LinearSolverData::SymFactType::METIS)
+  switch (reorder)
   {
-    SetReorderingStrategy(mfem::MUMPSSolver::METIS);
+    case SymbolicFactorization::METIS:
+      SetReorderingStrategy(mfem::MUMPSSolver::METIS);
+      break;
+    case SymbolicFactorization::PARMETIS:
+      SetReorderingStrategy(mfem::MUMPSSolver::PARMETIS);
+      break;
+    case SymbolicFactorization::SCOTCH:
+      SetReorderingStrategy(mfem::MUMPSSolver::SCOTCH);
+      break;
+    case SymbolicFactorization::PTSCOTCH:
+      SetReorderingStrategy(mfem::MUMPSSolver::PTSCOTCH);
+      break;
+    case SymbolicFactorization::PORD:
+      SetReorderingStrategy(mfem::MUMPSSolver::PORD);
+      break;
+    case SymbolicFactorization::AMD:
+    case SymbolicFactorization::RCM:
+      SetReorderingStrategy(mfem::MUMPSSolver::AMD);
+      break;
+    case SymbolicFactorization::DEFAULT:
+      SetReorderingStrategy(mfem::MUMPSSolver::AUTOMATIC);  // Should have good default
+      break;
   }
-  else if (reorder == config::LinearSolverData::SymFactType::PARMETIS)
-  {
-    SetReorderingStrategy(mfem::MUMPSSolver::PARMETIS);
-  }
-  else if (reorder == config::LinearSolverData::SymFactType::SCOTCH)
-  {
-    SetReorderingStrategy(mfem::MUMPSSolver::SCOTCH);
-  }
-  else if (reorder == config::LinearSolverData::SymFactType::PTSCOTCH)
-  {
-    SetReorderingStrategy(mfem::MUMPSSolver::PTSCOTCH);
-  }
-  else
-  {
-    // SetReorderingStrategy(mfem::MUMPSSolver::AUTOMATIC);  // Should have good default
-    SetReorderingStrategy(mfem::MUMPSSolver::PORD);
-  }
-  SetReorderingReuse(true);  // Repeated calls use same sparsity pattern
+  SetReorderingReuse(reorder_reuse);  // If true repeated calls use same sparsity pattern
   if (blr_tol > 0.0)
   {
-    SetBLRTol(blr_tol);
-  }
-}
-
-void MumpsSolver::SetOperator(const Operator &op)
-{
-  const auto *PtAP = dynamic_cast<const ParOperator *>(&op);
-  if (PtAP)
-  {
-    mfem::MUMPSSolver::SetOperator(PtAP->ParallelAssemble());
-  }
-  else
-  {
-    mfem::MUMPSSolver::SetOperator(op);
+    //SetBLRTol(blr_tol);
   }
 }
 

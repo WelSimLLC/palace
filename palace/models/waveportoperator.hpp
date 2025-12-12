@@ -7,7 +7,11 @@
 #include <complex>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <mfem.hpp>
+#include "fem/fespace.hpp"
+#include "fem/gridfunction.hpp"
+#include "fem/mesh.hpp"
 #include "linalg/eps.hpp"
 #include "linalg/ksp.hpp"
 #include "linalg/operator.hpp"
@@ -18,13 +22,14 @@ namespace palace
 
 class IoData;
 class MaterialOperator;
-class SumMatrixCoefficient;
+class MaterialPropertyCoefficient;
 class SumVectorCoefficient;
 
 namespace config
 {
 
 struct WavePortData;
+struct SolverData;
 
 }  // namespace config
 
@@ -33,28 +38,37 @@ struct WavePortData;
 //
 class WavePortData
 {
-private:
-  bool excitation;
+public:
+  // Reference to material property data (not owned).
+  const MaterialOperator &mat_op;
+
+  // Wave port properties.
   int mode_idx;
   double d_offset;
+  int excitation;
+  bool active;
+  std::complex<double> kn0;
+  double omega0;
+  mfem::Vector port_normal;
 
-  // Attribute list and marker for all boundary attributes making up this port boundary.
-  // Mutable because some MFEM API calls are not const correct.
+private:
+  // List of all boundary attributes making up this port boundary.
   mfem::Array<int> attr_list;
-  mutable mfem::Array<int> attr_marker;
 
   // SubMesh data structures to define finite element spaces and grid functions on the
   // SubMesh corresponding to this port boundary.
-  std::unique_ptr<mfem::ParSubMesh> port_mesh;
+  std::unique_ptr<Mesh> port_mesh;
   std::unique_ptr<mfem::FiniteElementCollection> port_nd_fec, port_h1_fec;
-  std::unique_ptr<mfem::ParFiniteElementSpace> port_nd_fespace, port_h1_fespace;
+  std::unique_ptr<FiniteElementSpace> port_nd_fespace, port_h1_fespace;
   std::unique_ptr<mfem::ParTransferMap> port_nd_transfer, port_h1_transfer;
+  std::unordered_map<int, int> submesh_parent_elems;
+  mfem::Array<int> port_dbc_tdof_list;
+  double mu_eps_max;
 
   // Operator storage for repeated boundary mode eigenvalue problem solves.
-  double mu_eps_max;
-  std::unique_ptr<mfem::HypreParMatrix> A2r, A2i, B3;
-  std::unique_ptr<ComplexOperator> A, B, P;
-  ComplexVector v0, e0, e0t, e0n;
+  std::unique_ptr<mfem::HypreParMatrix> Atnr, Atni, Antr, Anti, Annr, Anni;
+  std::unique_ptr<ComplexOperator> opB;
+  ComplexVector v0, e0;
 
   // Eigenvalue solver for boundary modes.
   MPI_Comm port_comm;
@@ -62,42 +76,34 @@ private:
   std::unique_ptr<EigenvalueSolver> eigen;
   std::unique_ptr<ComplexKspSolver> ksp;
 
-  // Grid functions storing the last computed electric field mode on the port and the
-  // associated propagation constant. Also the coefficient for the incident port mode
-  // (n x H_inc) computed from the electric field mode.
-  std::unique_ptr<mfem::ParComplexGridFunction> port_E0t, port_E0n;
-  std::unique_ptr<mfem::VectorCoefficient> port_nxH0r_func, port_nxH0i_func;
+  // Grid functions storing the last computed electric field mode on the port, and stored
+  // objects for computing functions of the port modes for use as an excitation or in
+  // postprocessing.
+  std::unique_ptr<GridFunction> port_E0t, port_E0n, port_S0t, port_E;
   std::unique_ptr<mfem::LinearForm> port_sr, port_si;
-  std::unique_ptr<mfem::ParGridFunction> port_S0t;
-  std::complex<double> kn0;
-  double omega0;
 
 public:
-  WavePortData(const config::WavePortData &data, const MaterialOperator &mat_op,
-               const mfem::ParFiniteElementSpace &nd_fespace,
-               const mfem::ParFiniteElementSpace &h1_fespace,
-               const mfem::Array<int> &dbc_marker);
+  WavePortData(const config::WavePortData &data, const config::SolverData &solver,
+               const MaterialOperator &mat_op, mfem::ParFiniteElementSpace &nd_fespace,
+               mfem::ParFiniteElementSpace &h1_fespace, const mfem::Array<int> &dbc_attr);
   ~WavePortData();
 
-  const mfem::Array<int> &GetMarker() const { return attr_marker; }
-  mfem::Array<int> &GetMarker() { return attr_marker; }
+  [[nodiscard]] constexpr bool HasExcitation() const { return excitation != 0; }
+
+  const auto &GetAttrList() const { return attr_list; }
 
   void Initialize(double omega);
 
   HYPRE_BigInt GlobalTrueNDSize() const { return port_nd_fespace->GlobalTrueVSize(); }
   HYPRE_BigInt GlobalTrueH1Size() const { return port_h1_fespace->GlobalTrueVSize(); }
 
-  std::complex<double> GetPropagationConstant() const { return kn0; }
-  double GetOperatingFrequency() const { return omega0; }
+  std::unique_ptr<mfem::VectorCoefficient> GetModeExcitationCoefficientReal() const;
+  std::unique_ptr<mfem::VectorCoefficient> GetModeExcitationCoefficientImag() const;
 
-  bool IsExcited() const { return excitation; }
-  int GetModeIndex() const { return mode_idx; }
-  double GetOffsetDistance() const { return d_offset; }
-
-  const mfem::VectorCoefficient &GetModeCoefficientReal() const { return *port_nxH0r_func; }
-  mfem::VectorCoefficient &GetModeCoefficientReal() { return *port_nxH0r_func; }
-  const mfem::VectorCoefficient &GetModeCoefficientImag() const { return *port_nxH0i_func; }
-  mfem::VectorCoefficient &GetModeCoefficientImag() { return *port_nxH0i_func; }
+  std::unique_ptr<mfem::VectorCoefficient>
+  GetModeFieldCoefficientReal(double scaling = 1.0) const;
+  std::unique_ptr<mfem::VectorCoefficient>
+  GetModeFieldCoefficientImag(double scaling = 1.0) const;
 
   std::complex<double> GetCharacteristicImpedance() const
   {
@@ -112,11 +118,9 @@ public:
     return 0.0;
   }
 
-  std::complex<double> GetSParameter(mfem::ParComplexGridFunction &E) const;
-  std::complex<double> GetPower(mfem::ParComplexGridFunction &E,
-                                mfem::ParComplexGridFunction &B,
-                                const MaterialOperator &mat_op) const;
-  std::complex<double> GetVoltage(mfem::ParComplexGridFunction &E) const
+  std::complex<double> GetPower(GridFunction &E, GridFunction &B) const;
+  std::complex<double> GetSParameter(GridFunction &E) const;
+  std::complex<double> GetVoltage(GridFunction &E) const
   {
     MFEM_ABORT("GetVoltage is not yet implemented for wave port boundaries!");
     return 0.0;
@@ -129,28 +133,25 @@ public:
 class WavePortOperator
 {
 private:
-  // References to configuration file and material property data (not owned).
-  const IoData &iodata;
-  const MaterialOperator &mat_op;
+  // Mapping from port index to data structure containing port information.
+  std::map<int, WavePortData> ports;
 
   // Flag which forces no printing during WavePortData::Print().
   bool suppress_output;
+  double fc, kc;
 
-  // Mapping from port index to data structure containing port information.
-  std::map<int, WavePortData> ports;
-  mfem::Array<int> port_marker;
   void SetUpBoundaryProperties(const IoData &iodata, const MaterialOperator &mat_op,
-                               const mfem::ParFiniteElementSpace &nd_fespace,
-                               const mfem::ParFiniteElementSpace &h1_fespace);
-  void PrintBoundaryInfo(const IoData &iodata, mfem::ParMesh &mesh);
+                               mfem::ParFiniteElementSpace &nd_fespace,
+                               mfem::ParFiniteElementSpace &h1_fespace);
+  void PrintBoundaryInfo(const IoData &iodata, const mfem::ParMesh &mesh);
 
   // Compute boundary modes for all wave port boundaries at the specified frequency.
   void Initialize(double omega);
 
 public:
-  WavePortOperator(const IoData &iod, const MaterialOperator &mat,
-                   const mfem::ParFiniteElementSpace &nd_fespace,
-                   const mfem::ParFiniteElementSpace &h1_fespace);
+  WavePortOperator(const IoData &iodata, const MaterialOperator &mat_op,
+                   mfem::ParFiniteElementSpace &nd_fespace,
+                   mfem::ParFiniteElementSpace &h1_fespace);
 
   // Access data structures for the wave port with the given index.
   const WavePortData &GetPort(int idx) const;
@@ -163,17 +164,17 @@ public:
   // Enable or suppress all outputs (log printing and fields to disk).
   void SetSuppressOutput(bool suppress) { suppress_output = suppress; }
 
-  // Returns array marking wave port attributes.
-  const mfem::Array<int> &GetMarker() const { return port_marker; }
+  // Returns array of wave port attributes.
+  mfem::Array<int> GetAttrList() const;
 
   // Add contributions to system matrix from wave ports.
-  void AddExtraSystemBdrCoefficients(double omega, SumMatrixCoefficient &fbr,
-                                     SumMatrixCoefficient &fbi);
+  void AddExtraSystemBdrCoefficients(double omega, MaterialPropertyCoefficient &fbr,
+                                     MaterialPropertyCoefficient &fbi);
 
   // Add contributions to the right-hand side source term vector for an incident field at
   // excited port boundaries.
-  void AddExcitationBdrCoefficients(double omega, SumVectorCoefficient &fbr,
-                                    SumVectorCoefficient &fbi);
+  void AddExcitationBdrCoefficients(int excitation_idx, double omega,
+                                    SumVectorCoefficient &fbr, SumVectorCoefficient &fbi);
 };
 
 }  // namespace palace

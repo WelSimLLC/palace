@@ -17,6 +17,7 @@ namespace palace
 {
 
 class IoData;
+class Mesh;
 
 //
 // A class handling discretization of curl-curl problems for magnetostatics.
@@ -24,16 +25,12 @@ class IoData;
 class CurlCurlOperator
 {
 private:
-  const int pa_order_threshold;  // Order above which to use partial assembly vs. full
-  const bool skip_zeros;         // Skip zeros during full assembly of matrices
-
   // Helper variable for log file printing.
   bool print_hdr;
 
-  // Essential boundary condition markers.
-  mfem::Array<int> dbc_marker;
+  // Essential boundary condition attributes.
+  mfem::Array<int> dbc_attr;
   std::vector<mfem::Array<int>> dbc_tdof_lists;
-  void CheckBoundaryProperties();
 
   // Objects defining the finite element spaces for the magnetic vector potential
   // (Nedelec) and magnetic flux density (Raviart-Thomas) on the given mesh. The H1 spaces
@@ -41,9 +38,8 @@ private:
   std::vector<std::unique_ptr<mfem::ND_FECollection>> nd_fecs;
   std::vector<std::unique_ptr<mfem::H1_FECollection>> h1_fecs;
   std::unique_ptr<mfem::RT_FECollection> rt_fec;
-  FiniteElementSpaceHierarchy nd_fespaces;
-  AuxiliaryFiniteElementSpaceHierarchy h1_fespaces;
-  AuxiliaryFiniteElementSpace rt_fespace;
+  FiniteElementSpaceHierarchy nd_fespaces, h1_fespaces;
+  FiniteElementSpace rt_fespace;
 
   // Operator for domain material properties.
   MaterialOperator mat_op;
@@ -51,9 +47,11 @@ private:
   // Operator for source current excitation.
   SurfaceCurrentOperator surf_j_op;
 
+  mfem::Array<int> SetUpBoundaryProperties(const IoData &iodata, const mfem::ParMesh &mesh);
+  void CheckBoundaryProperties();
+
 public:
-  CurlCurlOperator(const IoData &iodata,
-                   const std::vector<std::unique_ptr<mfem::ParMesh>> &mesh);
+  CurlCurlOperator(const IoData &iodata, const std::vector<std::unique_ptr<Mesh>> &mesh);
 
   // Return material operator for postprocessing.
   const MaterialOperator &GetMaterialOp() const { return mat_op; }
@@ -73,15 +71,21 @@ public:
   auto &GetRTSpace() { return rt_fespace; }
   const auto &GetRTSpace() const { return rt_fespace; }
 
+  // Access the underlying mesh object.
+  const auto &GetMesh() const { return GetNDSpace().GetMesh(); }
+
   // Return the number of true (conforming) dofs on the finest ND space.
-  auto GlobalTrueVSize() { return GetNDSpace().GlobalTrueVSize(); }
+  auto GlobalTrueVSize() const { return GetNDSpace().GlobalTrueVSize(); }
 
   // Construct and return system matrix representing discretized curl-curl operator for
   // Ampere's law.
   std::unique_ptr<Operator> GetStiffnessMatrix();
 
   // Construct and return the discrete curl matrix.
-  const Operator &GetCurlMatrix() const { return GetRTSpace().GetDiscreteInterpolator(); }
+  const Operator &GetCurlMatrix() const
+  {
+    return GetRTSpace().GetDiscreteInterpolator(GetNDSpace());
+  }
 
   // Assemble the right-hand side source term vector for a current source applied on
   // specified excited boundaries.

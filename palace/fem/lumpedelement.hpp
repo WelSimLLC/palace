@@ -6,7 +6,6 @@
 
 #include <memory>
 #include <mfem.hpp>
-#include "utils/geodata.hpp"
 
 namespace palace
 {
@@ -18,34 +17,25 @@ namespace palace
 class LumpedElementData
 {
 protected:
-  // Spatial dimension.
-  const int dim;
-
-  // Marker for all boundary attributes making up this lumped element boundary.
-  mfem::Array<int> attr_marker;
-
-  double GetArea(mfem::ParFiniteElementSpace &fespace);
+  // List of all boundary attributes making up this lumped element boundary.
+  mfem::Array<int> attr_list;
 
 public:
-  LumpedElementData(int d, const mfem::Array<int> &marker) : dim(d), attr_marker(marker) {}
+  LumpedElementData(const mfem::Array<int> &attr_list) : attr_list(attr_list) {}
   virtual ~LumpedElementData() = default;
 
-  mfem::Array<int> &GetMarker() { return attr_marker; }
-  const mfem::Array<int> &GetMarker() const { return attr_marker; }
+  const auto &GetAttrList() const { return attr_list; }
 
   virtual double GetGeometryLength() const = 0;
   virtual double GetGeometryWidth() const = 0;
 
   virtual std::unique_ptr<mfem::VectorCoefficient>
-  GetModeCoefficient(double coef = 1.0) const = 0;
+  GetModeCoefficient(double coeff = 1.0) const = 0;
 };
 
 class UniformElementData : public LumpedElementData
 {
-protected:
-  // Bounding box defining the rectangular lumped port.
-  mesh::BoundingBox bounding_box;
-
+private:
   // Cartesian vector specifying signed direction of incident field.
   mfem::Vector direction;
 
@@ -53,37 +43,37 @@ protected:
   double l, w;
 
 public:
-  UniformElementData(const std::array<double, 3> &input_dir, const mfem::Array<int> &marker,
-                     mfem::ParFiniteElementSpace &fespace);
+  UniformElementData(const std::array<double, 3> &input_dir,
+                     const mfem::Array<int> &attr_list, const mfem::ParMesh &mesh);
 
   double GetGeometryLength() const override { return l; }
   double GetGeometryWidth() const override { return w; }
 
   std::unique_ptr<mfem::VectorCoefficient>
-  GetModeCoefficient(double coef = 1.0) const override;
+  GetModeCoefficient(double coeff = 1.0) const override;
 };
 
 class CoaxialElementData : public LumpedElementData
 {
-protected:
-  // Bounding ball defined by boundary element.
-  mesh::BoundingBall bounding_ball;
+private:
+  // Sign of incident field, +1 for +r̂, -1 for -r̂.
+  double direction;
 
-  // Sign of incident field, +r̂ if true.
-  bool sign;
+  // Origin of the coaxial annulus.
+  mfem::Vector origin;
 
-  // Inner radius of coaxial annulus.
-  double ra;
+  // Outer and inner radii of coaxial annulus.
+  double r_outer, r_inner;
 
 public:
-  CoaxialElementData(const std::array<double, 3> &direction, const mfem::Array<int> &marker,
-                     mfem::ParFiniteElementSpace &fespace);
+  CoaxialElementData(const std::array<double, 3> &input_dir,
+                     const mfem::Array<int> &attr_list, const mfem::ParMesh &mesh);
 
-  double GetGeometryLength() const override { return std::log(bounding_ball.radius / ra); }
+  double GetGeometryLength() const override { return std::log(r_outer / r_inner); }
   double GetGeometryWidth() const override { return 2.0 * M_PI; }
 
   std::unique_ptr<mfem::VectorCoefficient>
-  GetModeCoefficient(double coef = 1.0) const override;
+  GetModeCoefficient(double coeff = 1.0) const override;
 };
 
 }  // namespace palace

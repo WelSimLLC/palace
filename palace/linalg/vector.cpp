@@ -6,77 +6,160 @@
 #include <cstdint>
 #include <random>
 #include <mfem/general/forall.hpp>
+#include "linalg/hypre.hpp"
+#include "utils/omp.hpp"
 
 namespace palace
 {
 
-ComplexVector::ComplexVector(int n) : x(2 * n), xr(x, 0, n), xi(x, n, n) {}
+ComplexVector::ComplexVector(int size) : xr(size), xi(size) {}
 
 ComplexVector::ComplexVector(const ComplexVector &y) : ComplexVector(y.Size())
 {
+  UseDevice(y.UseDevice());
   Set(y);
 }
 
 ComplexVector::ComplexVector(const Vector &yr, const Vector &yi) : ComplexVector(yr.Size())
 {
-  MFEM_VERIFY(yr.Size() == yi.Size(),
-              "Mismatch in dimension of real and imaginary matrix parts in ComplexVector!");
+  MFEM_ASSERT(yr.Size() == yi.Size(),
+              "Mismatch in dimension of real and imaginary parts in ComplexVector!");
+  UseDevice(yr.UseDevice() || yi.UseDevice());
   Set(yr, yi);
 }
 
-ComplexVector::ComplexVector(const std::complex<double> *py, int n) : ComplexVector(n)
+ComplexVector::ComplexVector(const std::complex<double> *py, int size, bool on_dev)
+  : ComplexVector(size)
 {
-  Set(py, n);
+  Set(py, size, on_dev);
 }
 
-void ComplexVector::SetSize(int n)
+ComplexVector::ComplexVector(Vector &y, int offset, int size)
 {
-  x.SetSize(2 * n);
-  xr.MakeRef(x, 0, n);
-  xi.MakeRef(x, n, n);
+  MakeRef(y, offset, size);
+}
+
+void ComplexVector::UseDevice(bool use_dev)
+{
+  xr.UseDevice(use_dev);
+  xi.UseDevice(use_dev);
+}
+
+void ComplexVector::SetSize(int size)
+{
+  xr.SetSize(size);
+  xi.SetSize(size);
+}
+
+void ComplexVector::MakeRef(Vector &y, int offset, int size)
+{
+  MFEM_ASSERT(y.Size() >= offset + 2 * size,
+              "Insufficient storage for ComplexVector alias reference of the given size!");
+  y.ReadWrite();  // Ensure memory is allocated on device before aliasing
+  xr.MakeRef(y, offset, size);
+  xi.MakeRef(y, offset + size, size);
+}
+
+void ComplexVector::Set(const ComplexVector &y)
+{
+  MFEM_ASSERT(y.Size() == Size(),
+              "Mismatch in dimension of provided parts in ComplexVector!");
+  Real() = y.Real();
+  Imag() = y.Imag();
 }
 
 void ComplexVector::Set(const Vector &yr, const Vector &yi)
 {
-  MFEM_VERIFY(yr.Size() == yi.Size() && yr.Size() == Size(),
-              "Mismatch in dimension of real and imaginary matrix parts in ComplexVector!");
+  MFEM_ASSERT(yr.Size() == yi.Size() && yr.Size() == Size(),
+              "Mismatch in dimension of real and imaginary parts in ComplexVector!");
   Real() = yr;
   Imag() = yi;
 }
 
-void ComplexVector::Set(const std::complex<double> *py, int n)
+void ComplexVector::Set(const std::complex<double> *py, int size, bool on_dev)
 {
-  MFEM_VERIFY(n == Size(),
+  MFEM_ASSERT(size == Size(),
               "Mismatch in dimension for array of std::complex<double> in ComplexVector!");
-  Vector y(reinterpret_cast<double *>(const_cast<std::complex<double> *>(py)), 2 * n);
-  const int N = n;
-  const auto *Y = y.Read();
-  auto *XR = Real().Write();
-  auto *XI = Imag().Write();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 XR[i] = Y[2 * i];
-                 XI[i] = Y[2 * i + 1];
-               });
+  auto SetImpl = [this](const double *Y, const int N, bool use_dev)
+  {
+    auto *XR = Real().Write(use_dev);
+    auto *XI = Imag().Write(use_dev);
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          XR[i] = Y[2 * i];
+                          XI[i] = Y[2 * i + 1];
+                        });
+  };
+  const bool use_dev = UseDevice();
+  if (((!use_dev || !mfem::Device::Allows(mfem::Backend::DEVICE_MASK)) && !on_dev) ||
+      (use_dev && mfem::Device::Allows(mfem::Backend::DEVICE_MASK) && on_dev))
+  {
+    // No copy (host pointer and not using device, or device pointer and using device).
+    SetImpl(reinterpret_cast<const double *>(py), size, use_dev);
+  }
+  else if (!on_dev)
+  {
+    // Need copy from host to device (host pointer but using device).
+    Vector y(2 * size);
+    y.UseDevice(true);
+    {
+      auto *Y = y.HostWrite();
+      PalacePragmaOmp(parallel for schedule(static))
+      for (int i = 0; i < size; i++)
+      {
+        Y[2 * i] = py[i].real();
+        Y[2 * i + 1] = py[i].imag();
+      }
+    }
+    SetImpl(y.Read(use_dev), size, use_dev);
+  }
+  else
+  {
+    MFEM_ABORT("ComplexVector::Set using a device pointer is not implemented when MFEM is "
+               "not configured to use the device!");
+  }
 }
 
-void ComplexVector::Get(std::complex<double> *py, int n) const
+void ComplexVector::Get(std::complex<double> *py, int size, bool on_dev) const
 {
-  MFEM_VERIFY(n == Size(),
+  MFEM_ASSERT(size == Size(),
               "Mismatch in dimension for array of std::complex<double> in ComplexVector!");
-  Vector y(reinterpret_cast<double *>(py), 2 * n);
-  const int N = n;
-  const auto *XR = Real().Read();
-  const auto *XI = Imag().Read();
-  auto *Y = y.Write();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 Y[2 * i] = XR[i];
-                 Y[2 * i + 1] = XI[i];
-               });
-  y.HostReadWrite();
+  auto GetImpl = [this](double *Y, const int N, bool use_dev)
+  {
+    const auto *XR = Real().Read(use_dev);
+    const auto *XI = Imag().Read(use_dev);
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          Y[2 * i] = XR[i];
+                          Y[2 * i + 1] = XI[i];
+                        });
+  };
+  const bool use_dev = UseDevice();
+  if (((!use_dev || !mfem::Device::Allows(mfem::Backend::DEVICE_MASK)) && !on_dev) ||
+      (use_dev && mfem::Device::Allows(mfem::Backend::DEVICE_MASK) && on_dev))
+  {
+    // No copy (host pointer and not using device, or device pointer and using device).
+    GetImpl(reinterpret_cast<double *>(py), size, use_dev);
+  }
+  else if (!on_dev)
+  {
+    // Need copy from device to host (host pointer but using device).
+    const auto *XR = Real().HostRead();
+    const auto *XI = Imag().HostRead();
+    PalacePragmaOmp(parallel for schedule(static))
+    for (int i = 0; i < size; i++)
+    {
+      py[i].real(XR[i]);
+      py[i].imag(XI[i]);
+    }
+  }
+  else
+  {
+    MFEM_ABORT("ComplexVector::Get using a device pointer is not implemented when MFEM is "
+               "not configured to use the device!");
+  }
 }
 
 ComplexVector &ComplexVector::operator=(std::complex<double> s)
@@ -84,6 +167,37 @@ ComplexVector &ComplexVector::operator=(std::complex<double> s)
   Real() = s.real();
   Imag() = s.imag();
   return *this;
+}
+
+void ComplexVector::SetBlocks(const std::vector<const ComplexVector *> &y,
+                              const std::vector<std::complex<double>> &s)
+{
+  MFEM_ASSERT(s.empty() || y.size() == s.size(),
+              "Mismatch in dimension of vector blocks and scaling coefficients!");
+  auto *XR = Real().Write();
+  auto *XI = Imag().Write();
+  int offset = 0;
+  for (std::size_t b = 0; b < y.size(); b++)
+  {
+    MFEM_VERIFY(y[b] && ((b < y.size() - 1 && offset + y[b]->Size() < Size()) ||
+                         (b == y.size() - 1 && offset + y[b]->Size() == Size())),
+                "Mismatch between sum of block dimensions and parent vector dimension!");
+    const double sr = s.empty() ? 1.0 : s[b].real();
+    const double si = s.empty() ? 0.0 : s[b].imag();
+    const bool use_dev = UseDevice() || y[b]->UseDevice();
+    const int N = y[b]->Size();
+    const auto *YR = y[b]->Real().Read();
+    const auto *YI = y[b]->Imag().Read();
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          XR[i] = sr * YR[i] - si * YI[i];
+                          XI[i] = si * YR[i] + sr * YI[i];
+                        });
+    XR += N;
+    XI += N;
+    offset += N;
+  }
 }
 
 ComplexVector &ComplexVector::operator*=(std::complex<double> s)
@@ -97,16 +211,17 @@ ComplexVector &ComplexVector::operator*=(std::complex<double> s)
   }
   else
   {
+    const bool use_dev = UseDevice();
     const int N = Size();
-    auto *XR = Real().ReadWrite();
-    auto *XI = Imag().ReadWrite();
-    mfem::forall(N,
-                 [=] MFEM_HOST_DEVICE(int i)
-                 {
-                   const double t = si * XR[i] + sr * XI[i];
-                   XR[i] = sr * XR[i] - si * XI[i];
-                   XI[i] = t;
-                 });
+    auto *XR = Real().ReadWrite(use_dev);
+    auto *XI = Imag().ReadWrite(use_dev);
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          const auto t = si * XR[i] + sr * XI[i];
+                          XR[i] = sr * XR[i] - si * XI[i];
+                          XI[i] = t;
+                        });
   }
   return *this;
 }
@@ -118,113 +233,147 @@ void ComplexVector::Conj()
 
 void ComplexVector::Abs()
 {
+  const bool use_dev = UseDevice();
   const int N = Size();
-  auto *XR = Real().ReadWrite();
-  auto *XI = Imag().ReadWrite();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 XR[i] = std::sqrt(XR[i] * XR[i] + XI[i] * XI[i]);
-                 XI[i] = 0.0;
-               });
+  auto *XR = Real().ReadWrite(use_dev);
+  auto *XI = Imag().ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        XR[i] = std::sqrt(XR[i] * XR[i] + XI[i] * XI[i]);
+                        XI[i] = 0.0;
+                      });
 }
 
 void ComplexVector::Reciprocal()
 {
+  const bool use_dev = UseDevice();
   const int N = Size();
-  auto *XR = Real().ReadWrite();
-  auto *XI = Imag().ReadWrite();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 const std::complex<double> t = 1.0 / std::complex<double>(XR[i], XI[i]);
-                 XR[i] = t.real();
-                 XI[i] = t.imag();
-               });
+  auto *XR = Real().ReadWrite(use_dev);
+  auto *XI = Imag().ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        const auto s = 1.0 / (XR[i] * XR[i] + XI[i] * XI[i]);
+                        XR[i] *= s;
+                        XI[i] *= -s;
+                      });
 }
 
 std::complex<double> ComplexVector::Dot(const ComplexVector &y) const
 {
   return {(Real() * y.Real()) + (Imag() * y.Imag()),
-          (Imag() * y.Real()) - (Real() * y.Imag())};
+          (this == &y) ? 0.0 : ((Imag() * y.Real()) - (Real() * y.Imag()))};
 }
 
 std::complex<double> ComplexVector::TransposeDot(const ComplexVector &y) const
 {
   return {(Real() * y.Real()) - (Imag() * y.Imag()),
-          (Imag() * y.Real()) + (Real() * y.Imag())};
+          (this == &y) ? (2.0 * (Imag() * y.Real()))
+                       : ((Imag() * y.Real()) + (Real() * y.Imag()))};
 }
 
 void ComplexVector::AXPY(std::complex<double> alpha, const ComplexVector &x)
 {
-  const int N = Size();
+  AXPY(alpha, x.Real(), x.Imag(), Real(), Imag());
+}
+
+void ComplexVector::AXPY(std::complex<double> alpha, const Vector &xr, const Vector &xi,
+                         Vector &yr, Vector &yi)
+{
+  const bool use_dev = yr.UseDevice() || xr.UseDevice();
+  const int N = yr.Size();
   const double ar = alpha.real();
   const double ai = alpha.imag();
-  const auto *XR = x.Real().Read();
-  const auto *XI = x.Imag().Read();
-  auto *YR = Real().ReadWrite();
-  auto *YI = Imag().ReadWrite();
+  const auto *XR = xr.Read(use_dev);
+  const auto *XI = xi.Read(use_dev);
+  auto *YR = yr.ReadWrite(use_dev);
+  auto *YI = yi.ReadWrite(use_dev);
   if (ai == 0.0)
   {
-    mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { YR[i] += ar * XR[i]; });
-    mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { YI[i] += ar * XI[i]; });
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          YR[i] += ar * XR[i];
+                          YI[i] += ar * XI[i];
+                        });
   }
   else
   {
-    mfem::forall(N,
-                 [=] MFEM_HOST_DEVICE(int i)
-                 {
-                   YR[i] += ar * XR[i] - ai * XI[i];
-                   YI[i] += ai * XR[i] + ar * XI[i];
-                 });
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          const auto t = ai * XR[i] + ar * XI[i];
+                          YR[i] += ar * XR[i] - ai * XI[i];
+                          YI[i] += t;
+                        });
   }
 }
 
 void ComplexVector::AXPBY(std::complex<double> alpha, const ComplexVector &x,
                           std::complex<double> beta)
 {
-  const int N = Size();
+  AXPBY(alpha, x.Real(), x.Imag(), beta, Real(), Imag());
+}
+
+void ComplexVector::AXPBY(std::complex<double> alpha, const Vector &xr, const Vector &xi,
+                          std::complex<double> beta, Vector &yr, Vector &yi)
+{
+  const bool use_dev = yr.UseDevice() || xr.UseDevice();
+  const int N = yr.Size();
   const double ar = alpha.real();
   const double ai = alpha.imag();
-  const auto *XR = x.Real().Read();
-  const auto *XI = x.Imag().Read();
-  auto *YR = Real().ReadWrite();
-  auto *YI = Imag().ReadWrite();
+  const auto *XR = xr.Read(use_dev);
+  const auto *XI = xi.Read(use_dev);
   if (beta == 0.0)
   {
+    auto *YR = yr.Write(use_dev);
+    auto *YI = yi.Write(use_dev);
     if (ai == 0.0)
     {
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { YR[i] = ar * XR[i]; });
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { YI[i] = ar * XI[i]; });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            YR[i] = ar * XR[i];
+                            YI[i] = ar * XI[i];
+                          });
     }
     else
     {
-      mfem::forall(N,
-                   [=] MFEM_HOST_DEVICE(int i)
-                   {
-                     YR[i] = ar * XR[i] - ai * XI[i];
-                     YI[i] = ai * XR[i] + ar * XI[i];
-                   });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            const auto t = ai * XR[i] + ar * XI[i];
+                            YR[i] = ar * XR[i] - ai * XI[i];
+                            YI[i] = t;
+                          });
     }
   }
   else
   {
     const double br = beta.real();
     const double bi = beta.imag();
+    auto *YR = yr.ReadWrite(use_dev);
+    auto *YI = yi.ReadWrite(use_dev);
     if (ai == 0.0 && bi == 0.0)
     {
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { YR[i] = ar * XR[i] + br * YR[i]; });
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { YI[i] = ar * XI[i] + br * YI[i]; });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            YR[i] = ar * XR[i] + br * YR[i];
+                            YI[i] = ar * XI[i] + br * YI[i];
+                          });
     }
     else
     {
-      mfem::forall(N,
-                   [=] MFEM_HOST_DEVICE(int i)
-                   {
-                     const double t = bi * YR[i] + br * YI[i];
-                     YR[i] = ar * XR[i] - ai * XI[i] + br * YR[i] - bi * YI[i];
-                     YI[i] = ai * XR[i] + ar * XI[i] + t;
-                   });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            const auto t =
+                                ai * XR[i] + ar * XI[i] + bi * YR[i] + br * YI[i];
+                            YR[i] = ar * XR[i] - ai * XI[i] + br * YR[i] - bi * YI[i];
+                            YI[i] = t;
+                          });
     }
   }
 }
@@ -233,61 +382,214 @@ void ComplexVector::AXPBYPCZ(std::complex<double> alpha, const ComplexVector &x,
                              std::complex<double> beta, const ComplexVector &y,
                              std::complex<double> gamma)
 {
-  const int N = Size();
+  AXPBYPCZ(alpha, x.Real(), x.Imag(), beta, y.Real(), y.Imag(), gamma, Real(), Imag());
+}
+
+void ComplexVector::AXPBYPCZ(std::complex<double> alpha, const Vector &xr, const Vector &xi,
+                             std::complex<double> beta, const Vector &yr, const Vector &yi,
+                             std::complex<double> gamma, Vector &zr, Vector &zi)
+{
+  const bool use_dev = zr.UseDevice() || xr.UseDevice() || yr.UseDevice();
+  const int N = zr.Size();
   const double ar = alpha.real();
   const double ai = alpha.imag();
   const double br = beta.real();
   const double bi = beta.imag();
-  const auto *XR = x.Real().Read();
-  const auto *XI = x.Imag().Read();
-  const auto *YR = y.Real().Read();
-  const auto *YI = y.Imag().Read();
-  auto *ZR = Real().Write();
-  auto *ZI = Imag().Write();
+  const auto *XR = xr.Read(use_dev);
+  const auto *XI = xi.Read(use_dev);
+  const auto *YR = yr.Read(use_dev);
+  const auto *YI = yi.Read(use_dev);
   if (gamma == 0.0)
   {
+    auto *ZR = zr.Write(use_dev);
+    auto *ZI = zi.Write(use_dev);
     if (ai == 0.0 && bi == 0.0)
     {
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { ZR[i] = ar * XR[i] + br * YR[i]; });
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { ZI[i] = ar * XI[i] + br * YI[i]; });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            ZR[i] = ar * XR[i] + br * YR[i];
+                            ZI[i] = ar * XI[i] + br * YI[i];
+                          });
     }
     else
     {
-      mfem::forall(N,
-                   [=] MFEM_HOST_DEVICE(int i)
-                   {
-                     ZR[i] = ar * XR[i] - ai * XI[i] + br * YR[i] - bi * YI[i];
-                     ZI[i] = ai * XR[i] + ar * XI[i] + bi * YR[i] + br * YI[i];
-                   });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            const auto t =
+                                ai * XR[i] + ar * XI[i] + bi * YR[i] + br * YI[i];
+                            ZR[i] = ar * XR[i] - ai * XI[i] + br * YR[i] - bi * YI[i];
+                            ZI[i] = t;
+                          });
     }
   }
   else
   {
     const double gr = gamma.real();
     const double gi = gamma.imag();
+    auto *ZR = zr.ReadWrite(use_dev);
+    auto *ZI = zi.ReadWrite(use_dev);
     if (ai == 0.0 && bi == 0.0 && gi == 0.0)
     {
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i)
-                   { ZR[i] = ar * XR[i] + br * YR[i] + gr * ZR[i]; });
-      mfem::forall(N, [=] MFEM_HOST_DEVICE(int i)
-                   { ZI[i] = ar * XI[i] + br * YI[i] + gr * ZI[i]; });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            ZR[i] = ar * XR[i] + br * YR[i] + gr * ZR[i];
+                            ZI[i] = ar * XI[i] + br * YI[i] + gr * ZI[i];
+                          });
     }
     else
     {
-      mfem::forall(N,
-                   [=] MFEM_HOST_DEVICE(int i)
-                   {
-                     const double t = gi * ZR[i] + gr * ZI[i];
-                     ZR[i] = ar * XR[i] - ai * XI[i] + br * YR[i] - bi * YI[i] +
-                             gr * ZR[i] - gi * ZI[i];
-                     ZI[i] = ai * XR[i] + ar * XI[i] + bi * YR[i] + br * YI[i] + t;
-                   });
+      mfem::forall_switch(use_dev, N,
+                          [=] MFEM_HOST_DEVICE(int i)
+                          {
+                            const auto t = ai * XR[i] + ar * XI[i] + bi * YR[i] +
+                                           br * YI[i] + gi * ZR[i] + gr * ZI[i];
+                            ZR[i] = ar * XR[i] - ai * XI[i] + br * YR[i] - bi * YI[i] +
+                                    gr * ZR[i] - gi * ZI[i];
+                            ZI[i] = t;
+                          });
     }
   }
 }
 
 namespace linalg
 {
+
+template <>
+void SetSubVector(Vector &x, const mfem::Array<int> &rows, double s)
+{
+  const bool use_dev = x.UseDevice();
+  const int N = rows.Size();
+  const double sr = s;
+  const auto *idx = rows.Read(use_dev);
+  auto *X = x.ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        const auto id = idx[i];
+                        X[id] = sr;
+                      });
+}
+
+template <>
+void SetSubVector(ComplexVector &x, const mfem::Array<int> &rows, double s)
+{
+  const bool use_dev = x.UseDevice();
+  const int N = rows.Size();
+  const double sr = s;
+  const auto *idx = rows.Read(use_dev);
+  auto *XR = x.Real().ReadWrite(use_dev);
+  auto *XI = x.Imag().ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        const int id = idx[i];
+                        XR[id] = sr;
+                        XI[id] = 0.0;
+                      });
+}
+
+template <>
+void SetSubVector(Vector &x, const mfem::Array<int> &rows, const Vector &y)
+{
+  const bool use_dev = x.UseDevice();
+  const int N = rows.Size();
+  const auto *idx = rows.Read(use_dev);
+  const auto *Y = y.Read(use_dev);
+  auto *X = x.ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        const int id = idx[i];
+                        X[id] = Y[id];
+                      });
+}
+
+template <>
+void SetSubVector(ComplexVector &x, const mfem::Array<int> &rows, const ComplexVector &y)
+{
+  const bool use_dev = x.UseDevice();
+  const int N = rows.Size();
+  const auto *idx = rows.Read(use_dev);
+  const auto *YR = y.Real().Read(use_dev);
+  const auto *YI = y.Imag().Read(use_dev);
+  auto *XR = x.Real().ReadWrite(use_dev);
+  auto *XI = x.Imag().ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        const int id = idx[i];
+                        XR[id] = YR[id];
+                        XI[id] = YI[id];
+                      });
+}
+
+template <>
+void SetSubVector(Vector &x, int start, const Vector &y)
+{
+  const bool use_dev = x.UseDevice();
+  const int N = y.Size();
+  MFEM_ASSERT(start >= 0 && start + N <= x.Size(), "Invalid range for SetSubVector!");
+  const auto *Y = y.Read(use_dev);
+  auto *X = x.ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        const int id = start + i;
+                        X[id] = Y[i];
+                      });
+}
+
+template <>
+void SetSubVector(ComplexVector &x, int start, const ComplexVector &y)
+{
+  const bool use_dev = x.UseDevice();
+  const int N = y.Size();
+  MFEM_ASSERT(start >= 0 && start + N <= x.Size(), "Invalid range for SetSubVector!");
+  const auto *YR = y.Real().Read(use_dev);
+  const auto *YI = y.Imag().Read(use_dev);
+  auto *XR = x.Real().ReadWrite(use_dev);
+  auto *XI = x.Imag().ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        const int id = start + i;
+                        XR[id] = YR[i];
+                        XI[id] = YI[i];
+                      });
+}
+
+template <>
+void SetSubVector(Vector &x, int start, int end, double s)
+{
+  const bool use_dev = x.UseDevice();
+  MFEM_ASSERT(start >= 0 && end <= x.Size() && start <= end,
+              "Invalid range for SetSubVector!");
+  const int N = end - start;
+  const double sr = s;
+  auto *X = x.ReadWrite(use_dev) + start;
+  mfem::forall_switch(use_dev, N, [=] MFEM_HOST_DEVICE(int i) { X[i] = sr; });
+}
+
+template <>
+void SetSubVector(ComplexVector &x, int start, int end, double s)
+{
+  const bool use_dev = x.UseDevice();
+  MFEM_ASSERT(start >= 0 && end <= x.Size() && start <= end,
+              "Invalid range for SetSubVector!");
+  const int N = end - start;
+  const double sr = s;
+  auto *XR = x.Real().ReadWrite(use_dev) + start;
+  auto *XI = x.Imag().ReadWrite(use_dev) + start;
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        XR[i] = sr;
+                        XI[i] = 0.0;
+                      });
+}
 
 template <>
 void SetRandom(MPI_Comm comm, Vector &x, int seed)
@@ -299,7 +601,7 @@ void SetRandom(MPI_Comm comm, Vector &x, int seed)
     seed_gen.generate(seeds.begin(), seeds.end());
     seed = static_cast<int>(seeds[0]);
   }
-  x.Randomize(seed);
+  x.Randomize(seed);  // On host always
 }
 
 template <>
@@ -312,10 +614,11 @@ template <>
 void SetRandomSign(MPI_Comm comm, Vector &x, int seed)
 {
   SetRandom(comm, x, seed);
+  const bool use_dev = x.UseDevice();
   const int N = x.Size();
-  auto *X = x.ReadWrite();
-  mfem::forall(N, [=] MFEM_HOST_DEVICE(int i)
-               { X[i] = (X[i] > 0.0) ? 1.0 : ((X[i] < 0.0) ? -1.0 : 0.0); });
+  auto *X = x.ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N, [=] MFEM_HOST_DEVICE(int i)
+                      { X[i] = (X[i] > 0.0) ? 1.0 : ((X[i] < 0.0) ? -1.0 : 0.0); });
 }
 
 template <>
@@ -347,110 +650,52 @@ template <>
 void SetRandomSign(MPI_Comm comm, ComplexVector &x, int seed)
 {
   SetRandom(comm, x, seed);
+  const bool use_dev = x.UseDevice();
   const int N = x.Size();
-  auto *XR = x.Real().ReadWrite();
-  auto *XI = x.Imag().ReadWrite();
-  mfem::forall(N, [=] MFEM_HOST_DEVICE(int i)
-               { XR[i] = (XR[i] > 0.0) ? 1.0 : ((XR[i] < 0.0) ? -1.0 : 0.0); });
-  mfem::forall(N, [=] MFEM_HOST_DEVICE(int i)
-               { XI[i] = (XI[i] > 0.0) ? 1.0 : ((XI[i] < 0.0) ? -1.0 : 0.0); });
+  auto *XR = x.Real().ReadWrite(use_dev);
+  auto *XI = x.Imag().ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i)
+                      {
+                        XR[i] = (XR[i] > 0.0) ? 1.0 : ((XR[i] < 0.0) ? -1.0 : 0.0);
+                        XI[i] = (XI[i] > 0.0) ? 1.0 : ((XI[i] < 0.0) ? -1.0 : 0.0);
+                      });
 }
 
-template <>
-void SetSubVector(Vector &x, const mfem::Array<int> &rows, double s)
+double LocalDot(const Vector &x, const Vector &y)
 {
-  const int N = rows.Size();
-  const double sr = s;
-  const auto *idx = rows.Read();
-  auto *X = x.ReadWrite();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 const int id = idx[i];
-                 X[id] = sr;
-               });
+  static hypre::HypreVector X, Y;
+  MFEM_ASSERT(x.Size() == y.Size(), "Size mismatch for vector inner product!");
+  X.Update(x);
+  Y.Update(y);
+  return hypre_SeqVectorInnerProd(X, Y);
 }
 
-template <>
-void SetSubVector(ComplexVector &x, const mfem::Array<int> &rows, double s)
+std::complex<double> LocalDot(const ComplexVector &x, const ComplexVector &y)
 {
-  const int N = rows.Size();
-  const double sr = s;
-  const auto *idx = rows.Read();
-  auto *XR = x.Real().ReadWrite();
-  auto *XI = x.Imag().ReadWrite();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 const int id = idx[i];
-                 XR[id] = sr;
-               });
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 const int id = idx[i];
-                 XI[id] = 0.0;
-               });
+  if (&x == &y)
+  {
+    return {LocalDot(x.Real(), y.Real()) + LocalDot(x.Imag(), y.Imag()), 0.0};
+  }
+  else
+  {
+    return {LocalDot(x.Real(), y.Real()) + LocalDot(x.Imag(), y.Imag()),
+            LocalDot(x.Imag(), y.Real()) - LocalDot(x.Real(), y.Imag())};
+  }
 }
 
-template <>
-void SetSubVector(Vector &x, const mfem::Array<int> &rows, const Vector &y)
+// We implement LocalSum using Hypre instead of using MFEM's Sum because it is
+// more efficient on GPUs. TODO: Verify this
+double LocalSum(const Vector &x)
 {
-  const int N = rows.Size();
-  const auto *idx = rows.Read();
-  const auto *Y = y.Read();
-  auto *X = x.ReadWrite();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 const int id = idx[i];
-                 X[id] = Y[id];
-               });
+  static hypre::HypreVector X;
+  X.Update(x);
+  return hypre_SeqVectorSumElts(X);
 }
 
-template <>
-void SetSubVector(ComplexVector &x, const mfem::Array<int> &rows, const ComplexVector &y)
+std::complex<double> LocalSum(const ComplexVector &x)
 {
-  const int N = rows.Size();
-  const auto *idx = rows.Read();
-  const auto *YR = y.Real().Read();
-  const auto *YI = y.Imag().Read();
-  auto *XR = x.Real().ReadWrite();
-  auto *XI = x.Imag().ReadWrite();
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 const int id = idx[i];
-                 XR[id] = YR[id];
-               });
-  mfem::forall(N,
-               [=] MFEM_HOST_DEVICE(int i)
-               {
-                 const int id = idx[i];
-                 XI[id] = YI[id];
-               });
-}
-
-template <>
-double Norml2(MPI_Comm comm, const Vector &x, const Operator &B, Vector &Bx)
-{
-  B.Mult(x, Bx);
-  double dot = Dot(comm, Bx, x);
-  MFEM_ASSERT(dot > 0.0,
-              "Non-positive vector norm in normalization (dot = " << dot << ")!");
-  return std::sqrt(dot);
-}
-
-template <>
-double Norml2(MPI_Comm comm, const ComplexVector &x, const Operator &B, ComplexVector &Bx)
-{
-  // For SPD B, xᴴ B x is real.
-  B.Mult(x.Real(), Bx.Real());
-  B.Mult(x.Imag(), Bx.Imag());
-  std::complex<double> dot = Dot(comm, Bx, x);
-  MFEM_ASSERT(dot.real() > 0.0 && std::abs(dot.imag()) < 1.0e-9 * dot.real(),
-              "Non-positive vector norm in normalization (dot = " << dot << ")!");
-  return std::sqrt(dot.real());
+  return {LocalSum(x.Real()), LocalSum(x.Imag())};
 }
 
 template <>
@@ -524,6 +769,15 @@ void AXPBYPCZ(double alpha, const ComplexVector &x, double beta, const ComplexVe
               double gamma, ComplexVector &z)
 {
   z.AXPBYPCZ(alpha, x, beta, y, gamma);
+}
+
+void Sqrt(Vector &x, double s)
+{
+  const bool use_dev = x.UseDevice();
+  const int N = x.Size();
+  auto *X = x.ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i) { X[i] = std::sqrt(X[i] * s); });
 }
 
 }  // namespace linalg

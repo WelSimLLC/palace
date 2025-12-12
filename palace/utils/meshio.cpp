@@ -71,27 +71,27 @@ inline int ElemTypeComsol(const std::string &type)
 inline int ElemTypeNastran(const std::string &type)
 {
   // Returns only the low-order type for a given keyword.
-  if (!type.compare(0, 5, "CTRIA"))
+  if (!type.compare(0, 5, "CTRIA"))  // 3-node triangle
   {
     return 2;
   }
-  if (!type.compare(0, 5, "CQUAD"))
+  if (!type.compare(0, 5, "CQUAD"))  // 4-node quadrangle
   {
     return 3;
   }
-  if (!type.compare(0, 6, "CTETRA"))
+  if (!type.compare(0, 6, "CTETRA"))  // 4-node tetrahedron
   {
     return 4;
   }
-  if (!type.compare(0, 5, "CHEXA"))
+  if (!type.compare(0, 5, "CHEXA"))  // 8-node hexahedron
   {
     return 5;
   }
-  if (!type.compare(0, 6, "CPENTA"))
+  if (!type.compare(0, 6, "CPENTA"))  // 6-node prism
   {
     return 6;
   }
-  if (!type.compare(0, 6, "CPYRAM"))
+  if (!type.compare(0, 6, "CPYRAM"))  // 5-node pyramid
   {
     return 7;
   }
@@ -101,45 +101,74 @@ inline int ElemTypeNastran(const std::string &type)
 inline int HOElemTypeNastran(const int lo_type, const int num_nodes)
 {
   // Get high-order element type for corresponding low-order type.
-  if (lo_type == 2 && num_nodes > 3)
+  if (lo_type == 2 && num_nodes > 3)  // 6-node triangle
   {
     MFEM_VERIFY(num_nodes == 6, "Invalid high-order Nastran element!");
     return 9;
   }
   if (lo_type == 3)
   {
-    if (num_nodes == 9)
+    if (num_nodes == 9)  // 9-node quadrangle
     {
       return 10;
     }
-    if (num_nodes == 8)
+    if (num_nodes == 8)  // 8-node quadrangle
     {
       return 16;
     }
     MFEM_VERIFY(num_nodes == 4, "Invalid high-order Nastran element!");
-    return 3;
+    return lo_type;
   }
-  if (lo_type == 4 && num_nodes > 4)
+  if (lo_type == 4 && num_nodes > 4)  // 10-node tetrahedron
   {
     MFEM_VERIFY(num_nodes == 10, "Invalid high-order Nastran element!");
     return 11;
   }
-  if (lo_type == 5 && num_nodes > 8)
+  if (lo_type == 5 && num_nodes > 8)  // 20-node hexahedron
   {
     MFEM_VERIFY(num_nodes == 20, "Invalid high-order Nastran element!");
     return 17;
   }
-  if (lo_type == 6 && num_nodes > 6)
+  if (lo_type == 6 && num_nodes > 6)  // 15-node prism
   {
     MFEM_VERIFY(num_nodes == 15, "Invalid high-order Nastran element!");
     return 18;
   }
-  if (lo_type == 7 && num_nodes > 5)
+  if (lo_type == 7 && num_nodes > 5)  // 13-node pyramid
   {
     MFEM_VERIFY(num_nodes == 13, "Invalid high-order Nastran element!");
     return 19;
   }
   return lo_type;
+}
+
+inline int LOElemTypeGmsh(int ho_type)
+{
+  if (ho_type == 9)  // 6-node triangle
+  {
+    return 2;
+  }
+  if (ho_type == 10 || ho_type == 16)  // 9- or 8-node quadrangle
+  {
+    return 3;
+  }
+  if (ho_type == 11)  // 10-node tetrahedron
+  {
+    return 4;
+  }
+  if (ho_type == 12 || ho_type == 17)  // 27- or 20-node hexahedron
+  {
+    return 5;
+  }
+  if (ho_type == 13 || ho_type == 18)  // 18- or 15-node prism
+  {
+    return 6;
+  }
+  if (ho_type == 14 || ho_type == 19)  // 14- or 13-node pyramid
+  {
+    return 7;
+  }
+  return ho_type;
 }
 
 constexpr int ElemNumNodes[] = {-1,  // 2-node edge
@@ -212,7 +241,8 @@ inline std::string GetLineNastran(std::ifstream &input)
 {
   std::string str;
   std::getline(input, str);
-  MFEM_VERIFY(input, "Unexpected read failure parsing mesh file!");
+  MFEM_VERIFY(input.good(), "Unexpected read failure parsing mesh file!");
+  str.erase(std::remove(str.begin(), str.end(), '\r'), str.end());
   return str[0] == '$' ? "" : str;
 }
 
@@ -269,7 +299,7 @@ inline void WriteNode(std::ostream &buffer, const int tag, const double *coord)
 #if defined(GMSH_BIN)
   buffer.write(reinterpret_cast<const char *>(&tag), sizeof(int));
   buffer.write(reinterpret_cast<const char *>(coord), 3 * sizeof(double));
-  // No newline for binary data
+  // No newline for binary data.
 #else
   // Always 3D coordinates (user sets floating point format/precision on buffer).
   buffer << tag << ' ' << coord[0] << ' ' << coord[1] << ' ' << coord[2] << '\n';
@@ -284,7 +314,7 @@ inline void WriteElement(std::ostream &buffer, const int tag, const int type,
   buffer.write(reinterpret_cast<const char *>(data), 3 * sizeof(int));
   buffer.write(reinterpret_cast<const char *>(nodes),
                (std::streamsize)(ElemNumNodes[type - 1] * sizeof(int)));
-  // No newline for binary data
+  // No newline for binary data.
 #else
   buffer << tag << ' ' << type << " 2 " << geom << ' ' << geom;
   for (int i = 0; i < ElemNumNodes[type - 1]; i++)
@@ -297,7 +327,8 @@ inline void WriteElement(std::ostream &buffer, const int tag, const int type,
 
 void WriteGmsh(std::ostream &buffer, const std::vector<double> &node_coords,
                const std::vector<int> &node_tags,
-               const std::unordered_map<int, std::vector<int>> &elem_nodes)
+               const std::unordered_map<int, std::vector<int>> &elem_nodes,
+               const bool use_lo_type)
 {
   // Write the Gmsh file header (version 2.2).
   buffer << "$MeshFormat\n2.2 "
@@ -361,17 +392,18 @@ void WriteGmsh(std::ostream &buffer, const std::vector<double> &node_coords,
     int tag = 1;  // Global element tag
     for (const auto &[elem_type, nodes] : elem_nodes)
     {
+      const int elem_type_w = use_lo_type ? LOElemTypeGmsh(elem_type) : elem_type;
       const int &num_elem_nodes = ElemNumNodes[elem_type - 1];
       const int num_elem = (int)nodes.size() / (num_elem_nodes + 1);
 #if defined(GMSH_BIN)
       // For binary output, write the element header for each type. Always have 2 tags
-      // (physical + geometry)
-      const int header[3] = {elem_type, num_elem, 2};
+      // (physical + geometry).
+      const int header[3] = {elem_type_w, num_elem, 2};
       buffer.write(reinterpret_cast<const char *>(header), 3 * sizeof(int));
 #endif
       for (int i = 0; i < num_elem; i++)
       {
-        WriteElement(buffer, tag++, elem_type,
+        WriteElement(buffer, tag++, elem_type_w,
                      nodes[i * (num_elem_nodes + 1)],        // Geometry tag
                      &nodes[i * (num_elem_nodes + 1) + 1]);  // Element nodes
       }
@@ -388,7 +420,8 @@ void WriteGmsh(std::ostream &buffer, const std::vector<double> &node_coords,
 namespace mesh
 {
 
-void ConvertMeshComsol(const std::string &filename, std::ostream &buffer)
+void ConvertMeshComsol(const std::string &filename, std::ostream &buffer,
+                       bool remove_curvature)
 {
   // Read a COMSOL format mesh.
   const int comsol_bin = !filename.compare(filename.length() - 7, 7, ".mphbin") ||
@@ -507,13 +540,13 @@ void ConvertMeshComsol(const std::string &filename, std::ostream &buffer)
                 "Invalid COMSOL object version!");
 
     // If yes, then ready to parse the mesh.
-    if (!object_class.compare("Mesh"))
+    if (!object_class.compare(0, 4, "Mesh"))
     {
       break;
     }
 
     // Otherwise, parse over the selection to the next object.
-    MFEM_VERIFY(!object_class.compare("Selection"),
+    MFEM_VERIFY(!object_class.compare(0, 9, "Selection"),
                 "COMSOL mesh file only supports Mesh and Selection objects!");
     int version = -1;
     std::string label_str;
@@ -771,7 +804,7 @@ void ConvertMeshComsol(const std::string &filename, std::ostream &buffer)
             }
 
             // Parse all element geometry tags (stored at beginning of element nodes). For
-            // geometric entites in < 3D, the exported COMSOL tags are 0-based and need
+            // geometric entities in < 3D, the exported COMSOL tags are 0-based and need
             // correcting to 1-based for Gmsh.
             int i = 0;
             const int geom_start =
@@ -880,10 +913,11 @@ void ConvertMeshComsol(const std::string &filename, std::ostream &buffer)
   // Finalize input, write the Gmsh mesh.
   input.close();
   std::vector<int> dummy;
-  WriteGmsh(buffer, node_coords, dummy, elem_nodes);
+  WriteGmsh(buffer, node_coords, dummy, elem_nodes, remove_curvature);
 }
 
-void ConvertMeshNastran(const std::string &filename, std::ostream &buffer)
+void ConvertMeshNastran(const std::string &filename, std::ostream &buffer,
+                        bool remove_curvature)
 {
   // Read a Nastran/BDF format mesh.
   MFEM_VERIFY(!filename.compare(filename.length() - 4, 4, ".nas") ||
@@ -905,7 +939,7 @@ void ConvertMeshNastran(const std::string &filename, std::ostream &buffer)
     auto line = GetLineNastran(input);
     if (line.length() > 0)
     {
-      if (!line.compare("BEGIN BULK"))
+      if (!line.compare(0, 10, "BEGIN BULK"))
       {
         break;
       }
@@ -921,9 +955,9 @@ void ConvertMeshNastran(const std::string &filename, std::ostream &buffer)
   while (true)
   {
     auto line = GetLineNastran(input);
-    if (line.length() > 0)
+    if (line.length() > 0 && !input.eof())
     {
-      if (!line.compare("ENDDATA"))
+      if (!line.compare(0, 7, "ENDDATA"))
       {
         break;  // Done parsing file
       }
@@ -1085,7 +1119,7 @@ void ConvertMeshNastran(const std::string &filename, std::ostream &buffer)
 
   // Finalize input, write the Gmsh mesh.
   input.close();
-  WriteGmsh(buffer, node_coords, node_tags, elem_nodes);
+  WriteGmsh(buffer, node_coords, node_tags, elem_nodes, remove_curvature);
 }
 
 }  // namespace mesh

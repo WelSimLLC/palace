@@ -47,23 +47,66 @@ public:
   {
     MFEM_ABORT("MultTranspose() is not implemented for base class Solver<OperType>!");
   }
+
+  // Apply the solver with a preallocated temporary storage vector.
+  virtual void Mult2(const VecType &x, VecType &y, VecType &r) const
+  {
+    MFEM_ABORT("Mult2() with temporary storage vector is not implemented for base class "
+               "Solver<OperType>!");
+  }
+
+  // Apply the solver for the transpose problem with a preallocated temporary storage
+  //  vector.
+  virtual void MultTranspose2(const VecType &x, VecType &y, VecType &r) const
+  {
+    MFEM_ABORT("MultTranspose2() with temporary storage vector is not implemented for base "
+               "class Solver<OperType>!");
+  }
 };
 
 // This solver wraps a real-valued mfem::Solver for application to complex-valued problems
-// as a preconditioner inside of a Solver<OperType>
+// as a preconditioner inside of a Solver<OperType> or for assembling the matrix-free
+// preconditioner operator as an mfem::HypreParMatrix.
 template <typename OperType>
-class WrapperSolver : public Solver<OperType>
+class MfemWrapperSolver : public Solver<OperType>
 {
   using VecType = typename Solver<OperType>::VecType;
 
-protected:
+private:
+  // The actual mfem::Solver.
   std::unique_ptr<mfem::Solver> pc;
 
+  // System matrix A in parallel assembled form.
+  std::unique_ptr<mfem::HypreParMatrix> A;
+
+  // Whether or not to save the parallel assembled matrix after calling
+  // mfem::Solver::SetOperator (some solvers copy their input).
+  bool save_assembled;
+
+  // Whether to use the exact complex-valued system matrix or the real-valued
+  // approximation A = Ar + Ai.
+  bool complex_matrix = true;
+
+  // Whether to drop small entries (< ε) in the sparse system matrix.
+  bool drop_small_entries = true;
+
 public:
-  WrapperSolver(std::unique_ptr<mfem::Solver> &&pc)
-    : Solver<OperType>(pc->iterative_mode), pc(std::move(pc))
+  MfemWrapperSolver(std::unique_ptr<mfem::Solver> &&pc, bool save_assembled = true,
+                    bool complex_matrix = true, bool drop_small_entries = true)
+    : Solver<OperType>(pc->iterative_mode), pc(std::move(pc)),
+      save_assembled(save_assembled), complex_matrix(complex_matrix),
+      drop_small_entries(drop_small_entries)
   {
   }
+
+  // Access the underlying solver.
+  const mfem::Solver &GetSolver() { return *pc; }
+
+  // Configure whether or not to save the assembled operator.
+  void SetSaveAssembled(bool save) { save_assembled = save; }
+
+  // Configure whether or not to drop small entries in the system matrix.
+  void SetDropSmallEntries(bool drop) { drop_small_entries = drop; }
 
   void SetInitialGuess(bool guess) override
   {

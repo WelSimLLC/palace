@@ -13,15 +13,16 @@
 namespace palace
 {
 
+class GridFunction;
 class IoData;
 class MaterialOperator;
 
 namespace config
 {
 
+struct SurfaceFluxData;
 struct InterfaceDielectricData;
-struct CapacitanceData;
-struct InductanceData;
+struct FarFieldPostData;
 
 }  // namespace config
 
@@ -32,83 +33,88 @@ class SurfacePostOperator
 {
 private:
   // Mapping from surface index to data structure containing surface postprocessing
-  // information for surface loss, charge, or magnetic flux.
+  // information for surface flux or interface dielectric participation.
   struct SurfaceData
   {
-    mutable std::vector<mfem::Array<int>> attr_markers;
+    mfem::Array<int> attr_list;
 
     virtual ~SurfaceData() = default;
-
-    virtual std::unique_ptr<mfem::Coefficient>
-    GetCoefficient(int i, const mfem::ParGridFunction &U,
-                   const MaterialOperator &mat_op) const = 0;
-  };
-  struct InterfaceDielectricData : public SurfaceData
-  {
-    DielectricInterfaceType type;
-    double epsilon, ts, tandelta;
-    std::vector<mfem::Vector> sides;
-
-    InterfaceDielectricData(const config::InterfaceDielectricData &data,
-                            mfem::ParMesh &mesh);
-
-    std::unique_ptr<mfem::Coefficient>
-    GetCoefficient(int i, const mfem::ParGridFunction &U,
-                   const MaterialOperator &mat_op) const override;
-  };
-  struct SurfaceChargeData : public SurfaceData
-  {
-    SurfaceChargeData(const config::CapacitanceData &data, mfem::ParMesh &mesh);
-
-    std::unique_ptr<mfem::Coefficient>
-    GetCoefficient(int i, const mfem::ParGridFunction &U,
-                   const MaterialOperator &mat_op) const override;
   };
   struct SurfaceFluxData : public SurfaceData
   {
-    mfem::Vector direction;
+    SurfaceFlux type;
+    bool two_sided;
+    mfem::Vector center;
 
-    SurfaceFluxData(const config::InductanceData &data, mfem::ParMesh &mesh);
+    SurfaceFluxData(const config::SurfaceFluxData &data, const mfem::ParMesh &mesh,
+                    const mfem::Array<int> &bdr_attr_marker);
 
-    std::unique_ptr<mfem::Coefficient>
-    GetCoefficient(int i, const mfem::ParGridFunction &U,
-                   const MaterialOperator &mat_op) const override;
+    std::unique_ptr<mfem::Coefficient> GetCoefficient(const mfem::ParGridFunction *E,
+                                                      const mfem::ParGridFunction *B,
+                                                      const MaterialOperator &mat_op) const;
   };
-  std::map<int, InterfaceDielectricData> eps_surfs;
-  std::map<int, SurfaceChargeData> charge_surfs;
-  std::map<int, SurfaceFluxData> flux_surfs;
+  struct InterfaceDielectricData : public SurfaceData
+  {
+    InterfaceDielectric type;
+    double t, epsilon, tandelta;
+
+    InterfaceDielectricData(const config::InterfaceDielectricData &data,
+                            const mfem::ParMesh &mesh,
+                            const mfem::Array<int> &bdr_attr_marker);
+
+    std::unique_ptr<mfem::Coefficient> GetCoefficient(const GridFunction &E,
+                                                      const MaterialOperator &mat_op) const;
+  };
+  struct FarFieldData : public SurfaceData
+  {
+    std::vector<std::pair<double, double>> thetaphis;
+
+    FarFieldData() = default;
+    FarFieldData(const config::FarFieldPostData &data, const mfem::ParMesh &mesh,
+                 const mfem::Array<int> &bdr_attr_marker);
+
+    size_t size() const { return thetaphis.size(); }
+  };
 
   // Reference to material property operator (not owned).
   const MaterialOperator &mat_op;
 
-  // Unit function used for computing surface integrals.
-  mfem::GridFunction ones;
+  // Reference to scalar finite element space used for computing surface integrals (not
+  // owned).
+  mfem::ParFiniteElementSpace &h1_fespace;
 
-  double GetLocalSurfaceIntegral(const SurfaceData &data,
-                                 const mfem::ParGridFunction &U) const;
+  // Reference to vector finite element space used for computing far-field integrals (not
+  // owned).
+  mfem::ParFiniteElementSpace &nd_fespace;
+
+  double GetLocalSurfaceIntegral(mfem::Coefficient &f,
+                                 const mfem::Array<int> &attr_marker) const;
 
 public:
+  // Data structures for postprocessing the surface with the given type.
+  std::map<int, SurfaceFluxData> flux_surfs;
+  std::map<int, InterfaceDielectricData> eps_surfs;
+  FarFieldData farfield;
+
   SurfacePostOperator(const IoData &iodata, const MaterialOperator &mat_op,
-                      mfem::ParFiniteElementSpace &h1_fespace);
+                      mfem::ParFiniteElementSpace &h1_fespace,
+                      mfem::ParFiniteElementSpace &nd_fespace);
 
-  // Access data structures for the postprocessing surface with the given type.
-  const auto &GetEps() const { return eps_surfs; }
-  const auto &GetCap() const { return charge_surfs; }
-  const auto &GetInd() const { return flux_surfs; }
-  auto SizeEps() const { return eps_surfs.size(); }
-  auto SizeCap() const { return charge_surfs.size(); }
-  auto SizeInd() const { return flux_surfs.size(); }
+  // Get surface integrals computing electric or magnetic field flux through a boundary.
+  std::complex<double> GetSurfaceFlux(int idx, const GridFunction *E,
+                                      const GridFunction *B) const;
 
-  // Get surface integrals computing dielectric interface energy, surface charge, or
-  // surface magnetic flux.
+  // Batch version for multiple theta/phi pairs
+  std::vector<std::array<std::complex<double>, 3>>
+  GetFarFieldrE(const std::vector<std::pair<double, double>> &theta_phi_pairs,
+                const GridFunction &E, const GridFunction &B, double omega_re,
+                double omega_im) const;
+
+  // Get surface integrals computing interface dielectric energy.
   double GetInterfaceLossTangent(int idx) const;
-  double GetInterfaceElectricFieldEnergy(int idx,
-                                         const mfem::ParComplexGridFunction &E) const;
-  double GetInterfaceElectricFieldEnergy(int idx, const mfem::ParGridFunction &E) const;
-  double GetSurfaceElectricCharge(int idx, const mfem::ParComplexGridFunction &E) const;
-  double GetSurfaceElectricCharge(int idx, const mfem::ParGridFunction &E) const;
-  double GetSurfaceMagneticFlux(int idx, const mfem::ParComplexGridFunction &B) const;
-  double GetSurfaceMagneticFlux(int idx, const mfem::ParGridFunction &B) const;
+  double GetInterfaceElectricFieldEnergy(int idx, const GridFunction &E) const;
+
+  int GetVDim() const { return mat_op.SpaceDimension(); };
 };
 
 }  // namespace palace

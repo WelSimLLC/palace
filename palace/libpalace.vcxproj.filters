@@ -52,13 +52,7 @@
     <ClInclude Include="fem\libceed\hash.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="fem\libceed\integrator.hpp">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="fem\libceed\restriction.hpp">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="fem\libceed\utils.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="fem\qfunctions\curlcurl_qf.h">
@@ -92,9 +86,6 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="fem\qfunctions\mass_qf.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="fem\qfunctions\utils_qf.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="fem\qfunctions\vecfemass_qf.h">
@@ -256,6 +247,43 @@
     <ClInclude Include="utils\diagnostic.hpp">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="fem\libceed\basis.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fem\libceed\ceed.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\device.hpp" />
+    <ClInclude Include="utils\tablecsv.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fem\mesh.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linalg\floquetcorrection.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="models\portexcitations.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linalg\nleps.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="models\postoperatorcsv.hpp" />
+    <ClInclude Include="models\strattonchu.hpp" />
+    <ClInclude Include="fem\gridfunction.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fem\libceed\libceed_integrator.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="linalg\hypre.hpp" />
+    <ClInclude Include="linalg\densematrix.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fem\libceed\libceed_coefficient.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="drivers\basesolver.cpp">
@@ -286,9 +314,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="fem\fespace.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="fem\integrator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="fem\interpolator.cpp">
@@ -331,9 +356,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="fem\libceed\restriction.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="fem\libceed\utils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="linalg\amg.cpp">
@@ -460,6 +482,57 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="utils\dorfler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fem\libceed\ceed.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\device.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\geodata_impl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\tablecsv.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\omp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fem\mesh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="linalg\floquetcorrection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="models\portexcitations.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="linalg\nleps.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="models\postoperatorcsv.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="models\strattonchu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fem\gridfunction.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fem\libceed\libceed_integrator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="linalg\hypre.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fem\integrator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="linalg\densematrix.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fem\libceed\libceed_coefficient.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -7,25 +7,16 @@
 #include <memory>
 #include <vector>
 #include "drivers/basesolver.hpp"
-
-namespace mfem
-{
-
-class ParMesh;
-
-}  // namespace mfem
+#include "utils/configfile.hpp"
 
 namespace palace
 {
 
 class ErrorIndicator;
-class IoData;
-class LumpedPortOperator;
+class Mesh;
+template <ProblemType>
 class PostOperator;
 class SpaceOperator;
-class SurfaceCurrentOperator;
-class Timer;
-class WavePortOperator;
 
 //
 // Driver class for driven terminal simulations.
@@ -33,35 +24,12 @@ class WavePortOperator;
 class DrivenSolver : public BaseSolver
 {
 private:
-  int GetNumSteps(double start, double end, double delta) const;
+  ErrorIndicator SweepUniform(SpaceOperator &space_op) const;
 
-  ErrorIndicator SweepUniform(SpaceOperator &spaceop, PostOperator &postop, int nstep,
-                              int step0, double omega0, double delta_omega) const;
-
-  ErrorIndicator SweepAdaptive(SpaceOperator &spaceop, PostOperator &postop, int nstep,
-                               int step0, double omega0, double delta_omega) const;
-
-  void Postprocess(const PostOperator &postop, const LumpedPortOperator &lumped_port_op,
-                   const WavePortOperator &wave_port_op,
-                   const SurfaceCurrentOperator &surf_j_op, int step, double omega,
-                   double E_elec, double E_mag, bool full,
-                   const ErrorIndicator *indicator) const;
-
-  void PostprocessCurrents(const PostOperator &postop,
-                           const SurfaceCurrentOperator &surf_j_op, int step,
-                           double omega) const;
-
-  void PostprocessPorts(const PostOperator &postop,
-                        const LumpedPortOperator &lumped_port_op, int step,
-                        double omega) const;
-
-  void PostprocessSParameters(const PostOperator &postop,
-                              const LumpedPortOperator &lumped_port_op,
-                              const WavePortOperator &wave_port_op, int step,
-                              double omega) const;
+  ErrorIndicator SweepAdaptive(SpaceOperator &space_op) const;
 
   std::pair<ErrorIndicator, long long int>
-  Solve(const std::vector<std::unique_ptr<mfem::ParMesh>> &mesh) const override;
+  Solve(const std::vector<std::unique_ptr<Mesh>> &mesh) const override;
 
 public:
   using BaseSolver::BaseSolver;

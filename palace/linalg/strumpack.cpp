@@ -5,34 +5,31 @@
 
 #if defined(MFEM_USE_STRUMPACK)
 
-#include "linalg/rap.hpp"
-
 namespace palace
 {
 
 namespace
 {
 
-strumpack::CompressionType
-GetCompressionType(config::LinearSolverData::CompressionType type)
+strumpack::CompressionType GetCompressionType(SparseCompression type)
 {
   switch (type)
   {
-    case config::LinearSolverData::CompressionType::HSS:
+    case SparseCompression::HSS:
       return strumpack::CompressionType::HSS;
-    case config::LinearSolverData::CompressionType::BLR:
+    case SparseCompression::BLR:
       return strumpack::CompressionType::BLR;
-    case config::LinearSolverData::CompressionType::HODLR:
+    case SparseCompression::HODLR:
       return strumpack::CompressionType::HODLR;
-    case config::LinearSolverData::CompressionType::ZFP:
+    case SparseCompression::ZFP:
       return strumpack::CompressionType::LOSSY;
-    case config::LinearSolverData::CompressionType::BLR_HODLR:
+    case SparseCompression::BLR_HODLR:
       return strumpack::CompressionType::BLR_HODLR;
       break;
-    case config::LinearSolverData::CompressionType::ZFP_BLR_HODLR:
+    case SparseCompression::ZFP_BLR_HODLR:
       return strumpack::CompressionType::ZFP_BLR_HODLR;
       break;
-    case config::LinearSolverData::CompressionType::NONE:
+    case SparseCompression::NONE:
       return strumpack::CompressionType::NONE;
   }
   return strumpack::CompressionType::NONE;  // For compiler warning
@@ -42,9 +39,8 @@ GetCompressionType(config::LinearSolverData::CompressionType type)
 
 template <typename StrumpackSolverType>
 StrumpackSolverBase<StrumpackSolverType>::StrumpackSolverBase(
-    MPI_Comm comm, config::LinearSolverData::SymFactType reorder,
-    config::LinearSolverData::CompressionType compression, double lr_tol, int butterfly_l,
-    int lossy_prec, int print)
+    MPI_Comm comm, SymbolicFactorization reorder, SparseCompression compression,
+    double lr_tol, int butterfly_l, int lossy_prec, bool reorder_reuse, int print)
   : StrumpackSolverType(comm), comm(comm)
 {
   // Configure the solver.
@@ -53,33 +49,40 @@ StrumpackSolverBase<StrumpackSolverType>::StrumpackSolverBase(
   this->SetKrylovSolver(strumpack::KrylovSolver::DIRECT);  // Always as a preconditioner or
                                                            // direct solver
   this->SetMatching(strumpack::MatchingJob::NONE);
-  if (reorder == config::LinearSolverData::SymFactType::METIS)
+  switch (reorder)
   {
-    this->SetReorderingStrategy(strumpack::ReorderingStrategy::METIS);
+    case SymbolicFactorization::METIS:
+      this->SetReorderingStrategy(strumpack::ReorderingStrategy::METIS);
+      // this->SetReorderingStrategy(strumpack::ReorderingStrategy::AND);
+      break;
+    case SymbolicFactorization::PARMETIS:
+      this->SetReorderingStrategy(strumpack::ReorderingStrategy::PARMETIS);
+      break;
+    case SymbolicFactorization::SCOTCH:
+      this->SetReorderingStrategy(strumpack::ReorderingStrategy::SCOTCH);
+      break;
+    case SymbolicFactorization::PTSCOTCH:
+      this->SetReorderingStrategy(strumpack::ReorderingStrategy::PTSCOTCH);
+      break;
+    case SymbolicFactorization::AMD:
+      this->SetReorderingStrategy(strumpack::ReorderingStrategy::AMD);
+      // this->SetReorderingStrategy(strumpack::ReorderingStrategy::MMD);
+      break;
+    case SymbolicFactorization::RCM:
+      this->SetReorderingStrategy(strumpack::ReorderingStrategy::RCM);
+    case SymbolicFactorization::PORD:
+    case SymbolicFactorization::DEFAULT:
+      // Should have good default.
+      break;
   }
-  else if (reorder == config::LinearSolverData::SymFactType::PARMETIS)
-  {
-    this->SetReorderingStrategy(strumpack::ReorderingStrategy::PARMETIS);
-  }
-  else if (reorder == config::LinearSolverData::SymFactType::SCOTCH)
-  {
-    this->SetReorderingStrategy(strumpack::ReorderingStrategy::SCOTCH);
-  }
-  else if (reorder == config::LinearSolverData::SymFactType::PTSCOTCH)
-  {
-    this->SetReorderingStrategy(strumpack::ReorderingStrategy::PTSCOTCH);
-  }
-  else
-  {
-    // Use default
-  }
-  this->SetReorderingReuse(true);  // Repeated calls use same sparsity pattern
+  this->SetReorderingReuse(
+      reorder_reuse);  // If true repeated calls use same sparsity pattern
 
   // Configure compression.
   this->SetCompression(GetCompressionType(compression));
   switch (compression)
   {
-    case config::LinearSolverData::CompressionType::ZFP:
+    case SparseCompression::ZFP:
       if (lossy_prec <= 0)
       {
         this->SetCompression(strumpack::CompressionType::LOSSLESS);
@@ -89,17 +92,25 @@ StrumpackSolverBase<StrumpackSolverType>::StrumpackSolverBase(
         this->SetCompressionLossyPrecision(lossy_prec);
       }
       break;
-    case config::LinearSolverData::CompressionType::ZFP_BLR_HODLR:
+    case SparseCompression::ZFP_BLR_HODLR:
       this->SetCompressionLossyPrecision(lossy_prec);
-    case config::LinearSolverData::CompressionType::HODLR:
-    case config::LinearSolverData::CompressionType::BLR_HODLR:
+    case SparseCompression::HODLR:
+    case SparseCompression::BLR_HODLR:
       this->SetCompressionButterflyLevels(butterfly_l);
-    case config::LinearSolverData::CompressionType::HSS:
-    case config::LinearSolverData::CompressionType::BLR:
+    case SparseCompression::HSS:
+    case SparseCompression::BLR:
       this->SetCompressionRelTol(lr_tol);
       break;
-    case config::LinearSolverData::CompressionType::NONE:
+    case SparseCompression::NONE:
       break;
+  }
+  // if (mfem::Device::Allows(mfem::Backend::DEVICE_MASK))
+  // {
+  //   this->EnableGPU();  // XX TODO: GPU support disabled for now
+  // }
+  // else
+  {
+    this->DisableGPU();
   }
 }
 
@@ -107,37 +118,28 @@ template <typename StrumpackSolverType>
 void StrumpackSolverBase<StrumpackSolverType>::SetOperator(const Operator &op)
 {
   // Convert the input operator to a distributed STRUMPACK matrix (always assume a symmetric
-  // sparsity pattern). This is very similar to the MFEM STRUMPACKRowLocMatrix from a
+  // sparsity pattern). This is very similar to the MFEM's STRUMPACKRowLocMatrix from a
   // HypreParMatrix but avoids using the communicator from the Hypre matrix in the case that
   // the solver is constructed on a different communicator.
-  const mfem::HypreParMatrix *hypA;
-  const auto *PtAP = dynamic_cast<const ParOperator *>(&op);
-  if (PtAP)
-  {
-    hypA = &PtAP->ParallelAssemble();
-  }
-  else
-  {
-    hypA = dynamic_cast<const mfem::HypreParMatrix *>(&op);
-    MFEM_VERIFY(hypA, "StrumpackSolver requires a HypreParMatrix operator!");
-  }
-  auto *parcsr = (hypre_ParCSRMatrix *)const_cast<mfem::HypreParMatrix &>(*hypA);
-  hypA->HostRead();
+  const auto *hA = dynamic_cast<const mfem::HypreParMatrix *>(&op);
+  MFEM_VERIFY(hA && hA->GetGlobalNumRows() == hA->GetGlobalNumCols(),
+              "StrumpackSolver requires a square HypreParMatrix operator!");
+  auto *parcsr = (hypre_ParCSRMatrix *)const_cast<mfem::HypreParMatrix &>(*hA);
   hypre_CSRMatrix *csr = hypre_MergeDiagAndOffd(parcsr);
-  hypA->HypreRead();
+  hypre_CSRMatrixMigrate(csr, HYPRE_MEMORY_HOST);
 
   // Create the STRUMPACKRowLocMatrix by taking the internal data from a hypre_CSRMatrix.
-  HYPRE_Int n_loc = csr->num_rows;
-  HYPRE_BigInt first_row = parcsr->first_row_index;
-  HYPRE_Int *I = csr->i;
-  HYPRE_BigInt *J = csr->big_j;
-  double *data = csr->data;
+  HYPRE_BigInt glob_n = hypre_ParCSRMatrixGlobalNumRows(parcsr);
+  HYPRE_BigInt first_row = hypre_ParCSRMatrixFirstRowIndex(parcsr);
+  HYPRE_Int n_loc = hypre_CSRMatrixNumRows(csr);
+  HYPRE_Int *I = hypre_CSRMatrixI(csr);
+  HYPRE_BigInt *J = hypre_CSRMatrixBigJ(csr);
+  double *data = hypre_CSRMatrixData(csr);
 
   // Safe to delete the matrix since STRUMPACK copies it on input. Also clean up the Hypre
   // data structure once we are done with it.
 #if !defined(HYPRE_BIGINT)
-  mfem::STRUMPACKRowLocMatrix A(comm, n_loc, first_row, hypA->GetGlobalNumRows(),
-                                hypA->GetGlobalNumCols(), I, J, data, true);
+  mfem::STRUMPACKRowLocMatrix A(comm, n_loc, first_row, glob_n, glob_n, I, J, data, true);
 #else
   int n_loc_int = static_cast<int>(n_loc);
   MFEM_ASSERT(n_loc == (HYPRE_Int)n_loc_int,
@@ -148,8 +150,8 @@ void StrumpackSolverBase<StrumpackSolverType>::SetOperator(const Operator &op)
     II[i] = static_cast<int>(I[i]);
     MFEM_ASSERT(I[i] == (HYPRE_Int)II[i], "Overflow error for local sparse matrix index!");
   }
-  mfem::STRUMPACKRowLocMatrix A(comm, n_loc_int, first_row, hypA->GetGlobalNumRows(),
-                                hypA->GetGlobalNumCols(), II, J, data, true);
+  mfem::STRUMPACKRowLocMatrix A(comm, n_loc_int, first_row, glob_n, glob_n, II.HostRead(),
+                                J, data, true);
 #endif
   StrumpackSolverType::SetOperator(A);
   hypre_CSRMatrixDestroy(csr);

@@ -4,7 +4,6 @@
 #include "chebyshev.hpp"
 
 #include <mfem/general/forall.hpp>
-#include "linalg/rap.hpp"
 
 namespace palace
 {
@@ -14,16 +13,18 @@ namespace
 
 double GetLambdaMax(MPI_Comm comm, const Operator &A, const Vector &dinv)
 {
+  // Assumes A SPD (diag(A) > 0) to use Hermitian eigenvalue solver.
   DiagonalOperator Dinv(dinv);
   ProductOperator DinvA(Dinv, A);
-  return linalg::SpectralNorm(comm, DinvA, false);
+  return linalg::SpectralNorm(comm, DinvA, true);
 }
 
 double GetLambdaMax(MPI_Comm comm, const ComplexOperator &A, const ComplexVector &dinv)
 {
+  // Assumes A SPD (diag(A) > 0) to use Hermitian eigenvalue solver.
   ComplexDiagonalOperator Dinv(dinv);
   ComplexProductOperator DinvA(Dinv, A);
-  return linalg::SpectralNorm(comm, DinvA, false);
+  return linalg::SpectralNorm(comm, DinvA, A.IsReal());
 }
 
 template <bool Transpose = false>
@@ -68,41 +69,44 @@ inline void ApplyOp(const ComplexOperator &A, const ComplexVector &x, ComplexVec
 template <bool Transpose = false>
 inline void ApplyOrder0(double sr, const Vector &dinv, const Vector &r, Vector &d)
 {
+  const bool use_dev = dinv.UseDevice() || r.UseDevice() || d.UseDevice();
   const int N = d.Size();
-  const auto *DI = dinv.Read();
-  const auto *R = r.Read();
-  auto *D = d.Write();
-  mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { D[i] = sr * DI[i] * R[i]; });
+  const auto *DI = dinv.Read(use_dev);
+  const auto *R = r.Read(use_dev);
+  auto *D = d.Write(use_dev);
+  mfem::forall_switch(use_dev, N,
+                      [=] MFEM_HOST_DEVICE(int i) { D[i] = sr * DI[i] * R[i]; });
 }
 
 template <bool Transpose = false>
 inline void ApplyOrder0(const double sr, const ComplexVector &dinv, const ComplexVector &r,
                         ComplexVector &d)
 {
+  const bool use_dev = dinv.UseDevice() || r.UseDevice() || d.UseDevice();
   const int N = dinv.Size();
-  const auto *DIR = dinv.Real().Read();
-  const auto *DII = dinv.Imag().Read();
-  const auto *RR = r.Real().Read();
-  const auto *RI = r.Imag().Read();
-  auto *DR = d.Real().Write();
-  auto *DI = d.Imag().Write();
+  const auto *DIR = dinv.Real().Read(use_dev);
+  const auto *DII = dinv.Imag().Read(use_dev);
+  const auto *RR = r.Real().Read(use_dev);
+  const auto *RI = r.Imag().Read(use_dev);
+  auto *DR = d.Real().Write(use_dev);
+  auto *DI = d.Imag().Write(use_dev);
   if constexpr (!Transpose)
   {
-    mfem::forall(N,
-                 [=] MFEM_HOST_DEVICE(int i)
-                 {
-                   DR[i] = sr * (DIR[i] * RR[i] - DII[i] * RI[i]);
-                   DI[i] = sr * (DII[i] * RR[i] + DIR[i] * RI[i]);
-                 });
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          DR[i] = sr * (DIR[i] * RR[i] - DII[i] * RI[i]);
+                          DI[i] = sr * (DII[i] * RR[i] + DIR[i] * RI[i]);
+                        });
   }
   else
   {
-    mfem::forall(N,
-                 [=] MFEM_HOST_DEVICE(int i)
-                 {
-                   DR[i] = sr * (DIR[i] * RR[i] + DII[i] * RI[i]);
-                   DI[i] = sr * (-DII[i] * RR[i] + DIR[i] * RI[i]);
-                 });
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          DR[i] = sr * (DIR[i] * RR[i] + DII[i] * RI[i]);
+                          DI[i] = sr * (-DII[i] * RR[i] + DIR[i] * RI[i]);
+                        });
   }
 }
 
@@ -110,50 +114,54 @@ template <bool Transpose = false>
 inline void ApplyOrderK(const double sd, const double sr, const Vector &dinv,
                         const Vector &r, Vector &d)
 {
+  const bool use_dev = dinv.UseDevice() || r.UseDevice() || d.UseDevice();
   const int N = dinv.Size();
-  const auto *DI = dinv.Read();
-  const auto *R = r.Read();
-  auto *D = d.ReadWrite();
-  mfem::forall(N, [=] MFEM_HOST_DEVICE(int i) { D[i] = sd * D[i] + sr * DI[i] * R[i]; });
+  const auto *DI = dinv.Read(use_dev);
+  const auto *R = r.Read(use_dev);
+  auto *D = d.ReadWrite(use_dev);
+  mfem::forall_switch(use_dev, N, [=] MFEM_HOST_DEVICE(int i)
+                      { D[i] = sd * D[i] + sr * DI[i] * R[i]; });
 }
 
 template <bool Transpose = false>
 inline void ApplyOrderK(const double sd, const double sr, const ComplexVector &dinv,
                         const ComplexVector &r, ComplexVector &d)
 {
+  const bool use_dev = dinv.UseDevice() || r.UseDevice() || d.UseDevice();
   const int N = dinv.Size();
-  const auto *DIR = dinv.Real().Read();
-  const auto *DII = dinv.Imag().Read();
-  const auto *RR = r.Real().Read();
-  const auto *RI = r.Imag().Read();
-  auto *DR = d.Real().ReadWrite();
-  auto *DI = d.Imag().ReadWrite();
+  const auto *DIR = dinv.Real().Read(use_dev);
+  const auto *DII = dinv.Imag().Read(use_dev);
+  const auto *RR = r.Real().Read(use_dev);
+  const auto *RI = r.Imag().Read(use_dev);
+  auto *DR = d.Real().ReadWrite(use_dev);
+  auto *DI = d.Imag().ReadWrite(use_dev);
   if constexpr (!Transpose)
   {
-    mfem::forall(N,
-                 [=] MFEM_HOST_DEVICE(int i)
-                 {
-                   DR[i] = sd * DR[i] + sr * (DIR[i] * RR[i] - DII[i] * RI[i]);
-                   DI[i] = sd * DI[i] + sr * (DII[i] * RR[i] + DIR[i] * RI[i]);
-                 });
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          DR[i] = sd * DR[i] + sr * (DIR[i] * RR[i] - DII[i] * RI[i]);
+                          DI[i] = sd * DI[i] + sr * (DII[i] * RR[i] + DIR[i] * RI[i]);
+                        });
   }
   else
   {
-    mfem::forall(N,
-                 [=] MFEM_HOST_DEVICE(int i)
-                 {
-                   DR[i] = sd * DR[i] + sr * (DIR[i] * RR[i] + DII[i] * RI[i]);
-                   DI[i] = sd * DI[i] + sr * (-DII[i] * RR[i] + DIR[i] * RI[i]);
-                 });
+    mfem::forall_switch(use_dev, N,
+                        [=] MFEM_HOST_DEVICE(int i)
+                        {
+                          DR[i] = sd * DR[i] + sr * (DIR[i] * RR[i] + DII[i] * RI[i]);
+                          DI[i] = sd * DI[i] + sr * (-DII[i] * RR[i] + DIR[i] * RI[i]);
+                        });
   }
 }
 
 }  // namespace
 
 template <typename OperType>
-ChebyshevSmoother<OperType>::ChebyshevSmoother(int smooth_it, int poly_order, double sf_max)
-  : Solver<OperType>(), pc_it(smooth_it), order(poly_order), A(nullptr), lambda_max(0.0),
-    sf_max(sf_max)
+ChebyshevSmoother<OperType>::ChebyshevSmoother(MPI_Comm comm, int smooth_it, int poly_order,
+                                               double sf_max)
+  : Solver<OperType>(), comm(comm), pc_it(smooth_it), order(poly_order), A(nullptr),
+    lambda_max(0.0), sf_max(sf_max)
 {
   MFEM_VERIFY(order > 0, "Polynomial order for Chebyshev smoothing must be positive!");
 }
@@ -161,31 +169,26 @@ ChebyshevSmoother<OperType>::ChebyshevSmoother(int smooth_it, int poly_order, do
 template <typename OperType>
 void ChebyshevSmoother<OperType>::SetOperator(const OperType &op)
 {
-  using ParOperType =
-      typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
-                                ComplexParOperator, ParOperator>::type;
-
   A = &op;
-  r.SetSize(op.Height());
   d.SetSize(op.Height());
-
-  const auto *PtAP = dynamic_cast<const ParOperType *>(&op);
-  MFEM_VERIFY(PtAP,
-              "ChebyshevSmoother requires a ParOperator or ComplexParOperator operator!");
   dinv.SetSize(op.Height());
-  PtAP->AssembleDiagonal(dinv);
+  d.UseDevice(true);
+  dinv.UseDevice(true);
+  op.AssembleDiagonal(dinv);
   dinv.Reciprocal();
 
   // Set up Chebyshev coefficients using the computed maximum eigenvalue estimate. See
   // mfem::OperatorChebyshevSmoother or Adams et al. (2003).
-  lambda_max = sf_max * GetLambdaMax(PtAP->GetComm(), *A, dinv);
+  lambda_max = sf_max * GetLambdaMax(comm, *A, dinv);
+  MFEM_VERIFY(lambda_max > 0.0,
+              "Encountered zero maximum eigenvalue in Chebyshev smoother!");
 
   this->height = op.Height();
   this->width = op.Width();
 }
 
 template <typename OperType>
-void ChebyshevSmoother<OperType>::Mult(const VecType &x, VecType &y) const
+void ChebyshevSmoother<OperType>::Mult2(const VecType &x, VecType &y, VecType &r) const
 {
   // Apply smoother: y = y + p(A) (x - A y) .
   for (int it = 0; it < pc_it; it++)
@@ -217,10 +220,11 @@ void ChebyshevSmoother<OperType>::Mult(const VecType &x, VecType &y) const
 }
 
 template <typename OperType>
-ChebyshevSmoother1stKind<OperType>::ChebyshevSmoother1stKind(int smooth_it, int poly_order,
-                                                             double sf_max, double sf_min)
-  : Solver<OperType>(), pc_it(smooth_it), order(poly_order), A(nullptr), theta(0.0),
-    sf_max(sf_max), sf_min(sf_min)
+ChebyshevSmoother1stKind<OperType>::ChebyshevSmoother1stKind(MPI_Comm comm, int smooth_it,
+                                                             int poly_order, double sf_max,
+                                                             double sf_min)
+  : Solver<OperType>(), comm(comm), pc_it(smooth_it), order(poly_order), A(nullptr),
+    theta(0.0), sf_max(sf_max), sf_min(sf_min)
 {
   MFEM_VERIFY(order > 0, "Polynomial order for Chebyshev smoothing must be positive!");
 }
@@ -228,20 +232,12 @@ ChebyshevSmoother1stKind<OperType>::ChebyshevSmoother1stKind(int smooth_it, int 
 template <typename OperType>
 void ChebyshevSmoother1stKind<OperType>::SetOperator(const OperType &op)
 {
-  using ParOperType =
-      typename std::conditional<std::is_same<OperType, ComplexOperator>::value,
-                                ComplexParOperator, ParOperator>::type;
-
   A = &op;
-  r.SetSize(op.Height());
   d.SetSize(op.Height());
-
-  const auto *PtAP = dynamic_cast<const ParOperType *>(&op);
-  MFEM_VERIFY(
-      PtAP,
-      "ChebyshevSmoother1stKind requires a ParOperator or ComplexParOperator operator!");
   dinv.SetSize(op.Height());
-  PtAP->AssembleDiagonal(dinv);
+  d.UseDevice(true);
+  dinv.UseDevice(true);
+  op.AssembleDiagonal(dinv);
   dinv.Reciprocal();
 
   // Set up Chebyshev coefficients using the computed maximum eigenvalue estimate. The
@@ -250,7 +246,9 @@ void ChebyshevSmoother1stKind<OperType>::SetOperator(const OperType &op)
   {
     sf_min = 1.69 / (std::pow(order, 1.68) + 2.11 * order + 1.98);
   }
-  const double lambda_max = sf_max * GetLambdaMax(PtAP->GetComm(), *A, dinv);
+  const double lambda_max = sf_max * GetLambdaMax(comm, *A, dinv);
+  MFEM_VERIFY(lambda_max > 0.0,
+              "Encountered zero maximum eigenvalue in Chebyshev smoother!");
   const double lambda_min = sf_min * lambda_max;
   theta = 0.5 * (lambda_max + lambda_min);
   delta = 0.5 * (lambda_max - lambda_min);
@@ -260,7 +258,8 @@ void ChebyshevSmoother1stKind<OperType>::SetOperator(const OperType &op)
 }
 
 template <typename OperType>
-void ChebyshevSmoother1stKind<OperType>::Mult(const VecType &x, VecType &y) const
+void ChebyshevSmoother1stKind<OperType>::Mult2(const VecType &x, VecType &y,
+                                               VecType &r) const
 {
   // Apply smoother: y = y + p(A) (x - A y) .
   for (int it = 0; it < pc_it; it++)

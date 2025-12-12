@@ -11,8 +11,10 @@
 #include "drivers/transientsolver.hpp"
 #include "fem/errorindicator.hpp"
 #include "fem/fespace.hpp"
+#include "fem/mesh.hpp"
 #include "linalg/ksp.hpp"
 #include "models/domainpostoperator.hpp"
+#include "models/portexcitations.hpp"
 #include "models/postoperator.hpp"
 #include "models/surfacepostoperator.hpp"
 #include "utils/communication.hpp"
@@ -30,46 +32,35 @@ using json = nlohmann::json;
 namespace
 {
 
-std::string GetPostDir(const std::string &output)
+void SaveIteration(MPI_Comm comm, const fs::path &output_dir, int step, int width)
 {
-  return (output.length() > 0 && output.back() != '/') ? output + '/' : output;
-}
-
-std::string GetIterationPostDir(const std::string &output, int step, int width)
-{
-  return fmt::format("{}adapt{:0{}d}/", output, step, width);
-}
-
-void SaveIteration(MPI_Comm comm, const std::string &output, int step, int width)
-{
-  namespace fs = std::filesystem;
   BlockTimer bt(Timer::IO);
   Mpi::Barrier(comm);  // Wait for all processes to write postprocessing files
   if (Mpi::Root(comm))
   {
     // Create a subfolder for the results of this adaptation.
-    const std::string step_output = GetIterationPostDir(output, step, width);
+    auto step_output = output_dir / fmt::format("iteration{:0{}d}", step, width);
     if (!fs::exists(step_output))
     {
       fs::create_directories(step_output);
     }
     constexpr auto options =
         fs::copy_options::recursive | fs::copy_options::overwrite_existing;
-    for (const auto &f : fs::directory_iterator(output))
+    for (const auto &f : fs::directory_iterator(output_dir))
     {
-      if (f.path().filename().string().rfind("adapt") == 0)
+      if (f.path().filename().string().rfind("iteration") == 0)
       {
         continue;
       }
-      fs::copy(f, step_output + f.path().filename().string(), options);
+      fs::copy(f, step_output / f.path().filename(), options);
     }
   }
   Mpi::Barrier(comm);
 }
 
-json LoadMetadata(const std::string &post_dir)
+json LoadMetadata(const fs::path &post_dir)
 {
-  std::string path = post_dir + "palace.json";
+  std::string path = fs::path(post_dir / "palace.json").string();
   std::ifstream fi(path);
   if (!fi.is_open())
   {
@@ -78,9 +69,9 @@ json LoadMetadata(const std::string &post_dir)
   return json::parse(fi);
 }
 
-void WriteMetadata(const std::string &post_dir, const json &meta)
+void WriteMetadata(const fs::path &post_dir, const json &meta)
 {
-  std::string path = post_dir + "palace.json";
+  std::string path = fs::path(post_dir / "palace.json").string();
   std::ofstream fo(path);
   if (!fo.is_open())
   {
@@ -108,16 +99,10 @@ mfem::Array<int> MarkedElements(const Vector &e, double threshold)
 
 BaseSolver::BaseSolver(const IoData &iodata, bool root, int size, int num_thread,
                        const char *git_tag)
-  : iodata(iodata), post_dir(GetPostDir(iodata.problem.output)), root(root), table(8, 9, 9)
+  : iodata(iodata), post_dir(iodata.problem.output), root(root)
 {
-  // Create directory for output.
-  if (root && !std::filesystem::exists(post_dir))
-  {
-    std::filesystem::create_directories(post_dir);
-  }
-
   // Initialize simulation metadata for this simulation.
-  if (root && post_dir.length() > 0)
+  if (root)
   {
     json meta;
     if (git_tag)
@@ -136,30 +121,27 @@ BaseSolver::BaseSolver(const IoData &iodata, bool root, int size, int num_thread
   }
 }
 
-void BaseSolver::SolveEstimateMarkRefine(
-    std::vector<std::unique_ptr<mfem::ParMesh>> &mesh) const
+void BaseSolver::SolveEstimateMarkRefine(std::vector<std::unique_ptr<Mesh>> &mesh) const
 {
   const auto &refinement = iodata.model.refinement;
   const bool use_amr = [&]()
   {
-    if (dynamic_cast<const TransientSolver *>(this) != nullptr)
+    if (refinement.max_it > 0 && dynamic_cast<const TransientSolver *>(this) != nullptr)
     {
       Mpi::Warning("AMR is not currently supported for transient simulations!\n");
       return false;
     }
-    return refinement.max_it > 0;
+    return (refinement.max_it > 0);
   }();
   if (use_amr && mesh.size() > 1)
   {
     Mpi::Print("\nFlattening mesh sequence:\n AMR will start from the final mesh in "
                "the sequence of a priori refinements\n");
     mesh.erase(mesh.begin(), mesh.end() - 1);
-    constexpr bool refine = true, fix_orientation = true;
-    mesh.back()->Finalize(refine, fix_orientation);
   }
+  MPI_Comm comm = mesh.back()->GetComm();
 
   // Perform initial solve and estimation.
-  MPI_Comm comm = mesh.back()->GetComm();
   auto [indicators, ntdof] = Solve(mesh);
   double err = indicators.Norml2(comm);
 
@@ -170,7 +152,7 @@ void BaseSolver::SolveEstimateMarkRefine(
     // Run out of iterations.
     ret |= (it >= refinement.max_it);
     // Run out of DOFs if a limit was set.
-    ret |= (refinement.max_size >= 1 && ntdof > refinement.max_size);
+    ret |= (refinement.max_size > 0 && ntdof > refinement.max_size);
     return ret;
   };
 
@@ -178,13 +160,18 @@ void BaseSolver::SolveEstimateMarkRefine(
   int it = 0;
   while (!ExhaustedResources(it, ntdof) && err >= refinement.tol)
   {
+    // Print timing summary.
+    Mpi::Print("\nCumulative timing statistics:\n");
+    BlockTimer::Print(comm);
+    SaveMetadata(BlockTimer::GlobalTimer());
+
     BlockTimer bt(Timer::ADAPTATION);
     Mpi::Print("\nAdaptive mesh refinement (AMR) iteration {:d}:\n"
-               " Indicator norm = {:.3e}, size = {:d}\n"
-               " Maximum iterations = {:d}, tol. = {:.3e}{}\n",
+               " Indicator norm = {:.3e}, global unknowns = {:d}\n"
+               " Max. iterations = {:d}, tol. = {:.3e}{}\n",
                ++it, err, ntdof, refinement.max_it, refinement.tol,
                (refinement.max_size > 0
-                    ? ", maximum size = " + std::to_string(refinement.max_size)
+                    ? ", max. size = " + std::to_string(refinement.max_size)
                     : ""));
 
     // Optionally save off the previous solution.
@@ -195,60 +182,67 @@ void BaseSolver::SolveEstimateMarkRefine(
     }
 
     // Mark.
-    const auto [threshold, marked_error] = utils::ComputeDorflerThreshold(
-        comm, indicators.Local(), refinement.update_fraction);
-    const auto marked_elements = MarkedElements(indicators.Local(), threshold);
-    const auto [glob_marked_elements, glob_elements] =
-        linalg::GlobalSize2(comm, marked_elements, indicators.Local());
-    Mpi::Print(
-        " Marked {:d}/{:d} elements for refinement ({:.2f}% of the error, θ = {:.2f})\n",
-        glob_marked_elements, glob_elements, 100 * marked_error,
-        refinement.update_fraction);
+    const auto marked_elements = [&comm, &refinement](const auto &indicators)
+    {
+      const auto [threshold, marked_error] = utils::ComputeDorflerThreshold(
+          comm, indicators.Local(), refinement.update_fraction);
+      const auto marked_elements = MarkedElements(indicators.Local(), threshold);
+      const auto [glob_marked_elements, glob_elements] =
+          linalg::GlobalSize2(comm, marked_elements, indicators.Local());
+      Mpi::Print(
+          " Marked {:d}/{:d} elements for refinement ({:.2f}% of the error, θ = {:.2f})\n",
+          glob_marked_elements, glob_elements, 100 * marked_error,
+          refinement.update_fraction);
+      return marked_elements;
+    }(indicators);
 
     // Refine.
-    const auto initial_elem_count = mesh.back()->GetGlobalNE();
-    mesh.back()->GeneralRefinement(marked_elements, -1, refinement.max_nc_levels);
-    const auto final_elem_count = mesh.back()->GetGlobalNE();
-    Mpi::Print(" Mesh refinement added {:d} elements (initial: {}, final: {})\n",
-               final_elem_count - initial_elem_count, initial_elem_count, final_elem_count);
+    {
+      mfem::ParMesh &fine_mesh = *mesh.back();
+      const auto initial_elem_count = fine_mesh.GetGlobalNE();
+      fine_mesh.GeneralRefinement(marked_elements, -1, refinement.max_nc_levels);
+      const auto final_elem_count = fine_mesh.GetGlobalNE();
+      Mpi::Print(" {} mesh refinement added {:d} elements (initial = {:d}, final = {:d})\n",
+                 fine_mesh.Nonconforming() ? "Nonconforming" : "Conforming",
+                 final_elem_count - initial_elem_count, initial_elem_count,
+                 final_elem_count);
+    }
 
     // Optionally rebalance and write the adapted mesh to file.
-    const auto ratio_pre =
-        mesh::RebalanceMesh(iodata, mesh.back(), refinement.maximum_imbalance);
-    if (ratio_pre > refinement.maximum_imbalance)
     {
-      int min_elem, max_elem;
-      min_elem = max_elem = mesh.back()->GetNE();
-      Mpi::GlobalMin(1, &min_elem, comm);
-      Mpi::GlobalMax(1, &max_elem, comm);
-      const auto ratio_post = double(max_elem) / min_elem;
-      Mpi::Print(" Rebalanced mesh: Ratio {:.3f} exceeded maximum allowed value {:.3f} "
-                 "(new ratio = {:.3f})\n",
-                 ratio_pre, refinement.maximum_imbalance, ratio_post);
+      const auto ratio_pre = mesh::RebalanceMesh(iodata, *mesh.back());
+      if (ratio_pre > refinement.maximum_imbalance)
+      {
+        int min_elem, max_elem;
+        min_elem = max_elem = mesh.back()->GetNE();
+        Mpi::GlobalMin(1, &min_elem, comm);
+        Mpi::GlobalMax(1, &max_elem, comm);
+        const auto ratio_post = double(max_elem) / min_elem;
+        Mpi::Print(" Rebalanced mesh: Ratio {:.3f} exceeded max. allowed value {:.3f} "
+                   "(new ratio = {:.3f})\n",
+                   ratio_pre, refinement.maximum_imbalance, ratio_post);
+      }
+      mesh.back()->Update();
     }
 
     // Solve + estimate.
-    Mpi::Print("\nProceeding with solve/estimate iteration {}...\n", 1 + it);
+    Mpi::Print("\nProceeding with solve/estimate iteration {}...\n", it + 1);
     std::tie(indicators, ntdof) = Solve(mesh);
     err = indicators.Norml2(comm);
   }
   Mpi::Print("\nCompleted {:d} iteration{} of adaptive mesh refinement (AMR):\n"
-             " Indicator norm = {:.3e}, size = {:d}\n"
-             " Maximum iterations = {:d}, tol. = {:.3e}{}\n",
+             " Indicator norm = {:.3e}, global unknowns = {:d}\n"
+             " Max. iterations = {:d}, tol. = {:.3e}{}\n",
              it, (it == 1 ? "" : "s"), err, ntdof, refinement.max_it, refinement.tol,
              (refinement.max_size > 0
-                  ? ", maximum size = " + std::to_string(refinement.max_size)
+                  ? ", max. size = " + std::to_string(refinement.max_size)
                   : ""));
 }
 
 void BaseSolver::SaveMetadata(const FiniteElementSpaceHierarchy &fespaces) const
 {
-  if (post_dir.length() == 0)
-  {
-    return;
-  }
   const auto &fespace = fespaces.GetFinestFESpace();
-  HYPRE_BigInt ne = fespace.GetParMesh()->GetNE();
+  HYPRE_BigInt ne = fespace.GetParMesh().GetNE();
   Mpi::GlobalSum(1, &ne, fespace.GetComm());
   std::vector<HYPRE_BigInt> ndofs(fespaces.GetNumLevels());
   for (std::size_t l = 0; l < fespaces.GetNumLevels(); l++)
@@ -268,10 +262,6 @@ void BaseSolver::SaveMetadata(const FiniteElementSpaceHierarchy &fespaces) const
 template <typename SolverType>
 void BaseSolver::SaveMetadata(const SolverType &ksp) const
 {
-  if (post_dir.length() == 0)
-  {
-    return;
-  }
   if (root)
   {
     json meta = LoadMetadata(post_dir);
@@ -283,14 +273,10 @@ void BaseSolver::SaveMetadata(const SolverType &ksp) const
 
 void BaseSolver::SaveMetadata(const Timer &timer) const
 {
-  if (post_dir.length() == 0)
-  {
-    return;
-  }
   if (root)
   {
     json meta = LoadMetadata(post_dir);
-    for (int i = Timer::INIT; i < Timer::NUMTIMINGS; i++)
+    for (int i = Timer::INIT; i < Timer::NUM_TIMINGS; i++)
     {
       auto key = Timer::descriptions[i];
       key.erase(std::remove_if(key.begin(), key.end(), isspace), key.end());
@@ -301,464 +287,13 @@ void BaseSolver::SaveMetadata(const Timer &timer) const
   }
 }
 
-namespace
+void BaseSolver::SaveMetadata(const PortExcitations &excitation_helper) const
 {
-
-struct EpsData
-{
-  const int idx;    // Domain or interface index
-  const double pl;  // Participation ratio
-  const double Ql;  // Quality factor
-};
-
-struct CapData
-{
-  const int idx;     // Surface index
-  const double Cij;  // Capacitance (integrated charge)
-};
-
-struct IndData
-{
-  const int idx;     // Surface index
-  const double Mij;  // Inductance (integrated flux)
-};
-
-struct ProbeData
-{
-  const int idx;                          // Probe index
-  const std::complex<double> Fx, Fy, Fz;  // Field values at probe location
-};
-
-}  // namespace
-
-void BaseSolver::PostprocessDomains(const PostOperator &postop, const std::string &name,
-                                    int step, double time, double E_elec, double E_mag,
-                                    double E_cap, double E_ind) const
-{
-  // If domains have been specified for postprocessing, compute the corresponding values
-  // and write out to disk.
-  if (post_dir.length() == 0)
-  {
-    return;
-  }
-
-  // Write the field and lumped element energies.
   if (root)
   {
-    std::string path = post_dir + "domain-E.csv";
-    auto output = OutputFile(path, (step > 0));
-    if (step == 0)
-    {
-      // clang-format off
-      output.print("{:>{}s},{:>{}s},{:>{}s},{:>{}s},{:>{}s}\n",
-                   name, table.w1,
-                   "E_elec (J)", table.w,
-                   "E_mag (J)", table.w,
-                   "E_cap (J)", table.w,
-                   "E_ind (J)", table.w);
-      // clang-format on
-    }
-    // clang-format off
-    output.print("{:{}.{}e},{:+{}.{}e},{:+{}.{}e},{:+{}.{}e},{:+{}.{}e}\n",
-                 time, table.w1, table.p1,
-                 iodata.DimensionalizeValue(IoData::ValueType::ENERGY, E_elec),
-                 table.w, table.p,
-                 iodata.DimensionalizeValue(IoData::ValueType::ENERGY, E_mag),
-                 table.w, table.p,
-                 iodata.DimensionalizeValue(IoData::ValueType::ENERGY, E_cap),
-                 table.w, table.p,
-                 iodata.DimensionalizeValue(IoData::ValueType::ENERGY, E_ind),
-                 table.w, table.p);
-    // clang-format on
-  }
-
-  // Write the Q-factors due to bulk dielectric loss.
-  std::vector<EpsData> eps_data;
-  eps_data.reserve(postop.GetDomainPostOp().GetEps().size());
-  for (const auto &[idx, data] : postop.GetDomainPostOp().GetEps())
-  {
-    const double pl = postop.GetBulkParticipation(idx, E_elec + E_cap);
-    const double Ql = postop.GetBulkQualityFactor(idx, E_elec + E_cap);
-    eps_data.push_back({idx, pl, Ql});
-  }
-  if (root && !eps_data.empty())
-  {
-    std::string path = post_dir + "domain-Q.csv";
-    auto output = OutputFile(path, (step > 0));
-    if (step == 0)
-    {
-      output.print("{:>{}s},", name, table.w1);
-      for (const auto &data : eps_data)
-      {
-        // clang-format off
-        output.print("{:>{}s},{:>{}s}{}",
-                     "p_bulk[" + std::to_string(data.idx) + "]", table.w,
-                     "Q_bulk[" + std::to_string(data.idx) + "]", table.w,
-                     (data.idx == eps_data.back().idx) ? "" : ",");
-        // clang-format on
-      }
-      output.print("\n");
-    }
-    output.print("{:{}.{}e},", time, table.w1, table.p1);
-    for (const auto &data : eps_data)
-    {
-      // clang-format off
-      output.print("{:+{}.{}e},{:+{}.{}e}{}",
-                   data.pl, table.w, table.p,
-                   data.Ql, table.w, table.p,
-                   (data.idx == eps_data.back().idx) ? "" : ",");
-      // clang-format on
-    }
-    output.print("\n");
-  }
-}
-
-void BaseSolver::PostprocessSurfaces(const PostOperator &postop, const std::string &name,
-                                     int step, double time, double E_elec, double E_mag,
-                                     double Vinc, double Iinc) const
-{
-  // If surfaces have been specified for postprocessing, compute the corresponding values
-  // and write out to disk. This output uses the complex magnitude of the computed charge
-  // and flux for frequency domain simulations. For capacitance/inductance, use the
-  // excitation voltage or current across all sources and excited ports. The passed in
-  // E_elec is the sum of the E-field and lumped capacitor energies, and E_mag is the same
-  // for the B-field and lumped inductors.
-  if (post_dir.length() == 0)
-  {
-    return;
-  }
-
-  // Write the Q-factors due to interface dielectric loss.
-  std::vector<EpsData> eps_data;
-  eps_data.reserve(postop.GetSurfacePostOp().GetEps().size());
-  for (const auto &[idx, data] : postop.GetSurfacePostOp().GetEps())
-  {
-    const double pl = postop.GetInterfaceParticipation(idx, E_elec);
-    const double tandelta = postop.GetSurfacePostOp().GetInterfaceLossTangent(idx);
-    const double Ql =
-        (pl == 0.0 || tandelta == 0.0) ? mfem::infinity() : 1.0 / (tandelta * pl);
-    eps_data.push_back({idx, pl, Ql});
-  }
-  if (root && !eps_data.empty())
-  {
-    std::string path = post_dir + "surface-Q.csv";
-    auto output = OutputFile(path, (step > 0));
-    if (step == 0)
-    {
-      output.print("{:>{}s},", name, table.w1);
-      for (const auto &data : eps_data)
-      {
-        // clang-format off
-        output.print("{:>{}s},{:>{}s}{}",
-                     "p_surf[" + std::to_string(data.idx) + "]", table.w,
-                     "Q_surf[" + std::to_string(data.idx) + "]", table.w,
-                     (data.idx == eps_data.back().idx) ? "" : ",");
-        // clang-format on
-      }
-      output.print("\n");
-    }
-    output.print("{:{}.{}e},", time, table.w1, table.p1);
-    for (const auto &data : eps_data)
-    {
-      // clang-format off
-      output.print("{:+{}.{}e},{:+{}.{}e}{}",
-                   data.pl, table.w, table.p,
-                   data.Ql, table.w, table.p,
-                   (data.idx == eps_data.back().idx) ? "" : ",");
-      // clang-format on
-    }
-    output.print("\n");
-  }
-
-  // Write the surface capacitance (integrated charge).
-  std::vector<CapData> cap_data;
-  cap_data.reserve(postop.GetSurfacePostOp().GetCap().size());
-  for (const auto &[idx, data] : postop.GetSurfacePostOp().GetCap())
-  {
-    const double Cij = (std::abs(Vinc) > 0.0) ? postop.GetSurfaceCharge(idx) / Vinc : 0.0;
-    cap_data.push_back(
-        {idx, iodata.DimensionalizeValue(IoData::ValueType::CAPACITANCE, Cij)});
-  }
-  if (root && !cap_data.empty())
-  {
-    std::string path = post_dir + "surface-C.csv";
-    auto output = OutputFile(path, (step > 0));
-    if (step == 0)
-    {
-      output.print("{:>{}s},", name, table.w1);
-      for (const auto &data : cap_data)
-      {
-        // clang-format off
-        output.print("{:>{}s}{}",
-                     "C[" + std::to_string(data.idx) + "] (F)", table.w,
-                     (data.idx == cap_data.back().idx) ? "" : ",");
-        // clang-format on
-      }
-      output.print("\n");
-    }
-    output.print("{:{}.{}e},", time, table.w1, table.p1);
-    for (const auto &data : cap_data)
-    {
-      // clang-format off
-      output.print("{:+{}.{}e}{}",
-                   data.Cij, table.w, table.p,
-                   (data.idx == cap_data.back().idx) ? "" : ",");
-      // clang-format on
-    }
-    output.print("\n");
-  }
-
-  // Write the surface inductance (integrated flux).
-  std::vector<IndData> ind_data;
-  ind_data.reserve(postop.GetSurfacePostOp().GetInd().size());
-  for (const auto &[idx, data] : postop.GetSurfacePostOp().GetInd())
-  {
-    const double Mij = (std::abs(Iinc) > 0.0) ? postop.GetSurfaceFlux(idx) / Iinc : 0.0;
-    ind_data.push_back(
-        {idx, iodata.DimensionalizeValue(IoData::ValueType::INDUCTANCE, Mij)});
-  }
-  if (root && !ind_data.empty())
-  {
-    std::string path = post_dir + "surface-M.csv";
-    auto output = OutputFile(path, (step > 0));
-    if (step == 0)
-    {
-      output.print("{:>{}s},", name, table.w1);
-      for (const auto &data : ind_data)
-      {
-        // clang-format off
-        output.print("{:>{}s}{}",
-                     "M[" + std::to_string(data.idx) + "] (H)", table.w,
-                     (data.idx == ind_data.back().idx) ? "" : ",");
-        // clang-format on
-      }
-      output.print("\n");
-    }
-    output.print("{:{}.{}e},", time, table.w1, table.p1);
-    for (const auto &data : ind_data)
-    {
-      // clang-format off
-      output.print("{:+{}.{}e}{}",
-                   data.Mij, table.w, table.p,
-                   (data.idx == ind_data.back().idx) ? "" : ",");
-      // clang-format on
-    }
-    output.print("\n");
-  }
-}
-
-void BaseSolver::PostprocessProbes(const PostOperator &postop, const std::string &name,
-                                   int step, double time) const
-{
-#if defined(MFEM_USE_GSLIB)
-  // If probe locations have been specified for postprocessing, compute the corresponding
-  // field values and write out to disk.
-  if (post_dir.length() == 0)
-  {
-    return;
-  }
-
-  // Write the computed field values at probe locations.
-  if (postop.GetProbes().size() == 0)
-  {
-    return;
-  }
-  const bool has_imaginary = postop.HasImaginary();
-  for (int f = 0; f < 2; f++)
-  {
-    // Probe data is ordered as [Fx1, Fy1, Fz1, Fx2, Fy2, Fz2, ...].
-    if (f == 0 && !postop.HasE())
-    {
-      continue;
-    }
-    if (f == 1 && !postop.HasB())
-    {
-      continue;
-    }
-    std::vector<ProbeData> probe_data;
-    probe_data.reserve(postop.GetProbes().size());
-    const std::vector<std::complex<double>> vF =
-        (f == 0) ? postop.ProbeEField() : postop.ProbeBField();
-    const int dim = vF.size() / postop.GetProbes().size();
-    int i = 0;
-    for (const auto &idx : postop.GetProbes())
-    {
-      probe_data.push_back(
-          {idx, vF[i * dim], vF[i * dim + 1], (dim == 3) ? vF[i * dim + 2] : 0.0});
-      i++;
-    }
-    const std::string F = (f == 0) ? "E" : "B";
-    const std::string unit = (f == 0) ? "(V/m)" : "(Wb/m²)";
-    const auto type = (f == 0) ? IoData::ValueType::FIELD_E : IoData::ValueType::FIELD_B;
-    if (root && !probe_data.empty())
-    {
-      std::string path = post_dir + "probe-" + F + ".csv";
-      auto output = OutputFile(path, (step > 0));
-      if (step == 0)
-      {
-        output.print("{:>{}s},", name, table.w1);
-        if (has_imaginary)
-        {
-          for (const auto &data : probe_data)
-          {
-            // clang-format off
-            output.print("{:>{}s},{:>{}s},{:>{}s},{:>{}s}",
-                         "Re{" + F + "_x[" + std::to_string(data.idx) + "]} " + unit, table.w,
-                         "Im{" + F + "_x[" + std::to_string(data.idx) + "]} " + unit, table.w,
-                         "Re{" + F + "_y[" + std::to_string(data.idx) + "]} " + unit, table.w,
-                         "Im{" + F + "_y[" + std::to_string(data.idx) + "]} " + unit, table.w);
-            // clang-format on
-            if (dim == 3)
-            {
-              // clang-format off
-              output.print(",{:>{}s},{:>{}s}{}",
-                           "Re{" + F + "_z[" + std::to_string(data.idx) + "]} " + unit, table.w,
-                           "Im{" + F + "_z[" + std::to_string(data.idx) + "]} " + unit, table.w,
-                           (data.idx == probe_data.back().idx) ? "" : ",");
-              // clang-format on
-            }
-            else
-            {
-              // clang-format off
-              output.print("{}",
-                           (data.idx == probe_data.back().idx) ? "" : ",");
-              // clang-format on
-            }
-          }
-        }
-        else
-        {
-          for (const auto &data : probe_data)
-          {
-            // clang-format off
-            output.print("{:>{}s},{:>{}s}",
-                         F + "_x[" + std::to_string(data.idx) + "] " + unit, table.w,
-                         F + "_y[" + std::to_string(data.idx) + "] " + unit, table.w);
-            // clang-format on
-            if (dim == 3)
-            {
-              // clang-format off
-              output.print(",{:>{}s}{}",
-                           F + "_z[" + std::to_string(data.idx) + "] " + unit, table.w,
-                           (data.idx == probe_data.back().idx) ? "" : ",");
-              // clang-format on
-            }
-            else
-            {
-              // clang-format off
-              output.print("{}",
-                           (data.idx == probe_data.back().idx) ? "" : ",");
-              // clang-format on
-            }
-          }
-        }
-        output.print("\n");
-      }
-      output.print("{:{}.{}e},", time, table.w1, table.p1);
-      if (has_imaginary)
-      {
-        for (const auto &data : probe_data)
-        {
-          // clang-format off
-          output.print("{:+{}.{}e},{:+{}.{}e},{:+{}.{}e},{:+{}.{}e}",
-                       iodata.DimensionalizeValue(type, data.Fx.real()), table.w, table.p,
-                       iodata.DimensionalizeValue(type, data.Fx.imag()), table.w, table.p,
-                       iodata.DimensionalizeValue(type, data.Fy.real()), table.w, table.p,
-                       iodata.DimensionalizeValue(type, data.Fy.imag()), table.w, table.p);
-          // clang-format on
-          if (dim == 3)
-          {
-            // clang-format off
-            output.print(",{:+{}.{}e},{:+{}.{}e}{}",
-                         iodata.DimensionalizeValue(type, data.Fz.real()), table.w, table.p,
-                         iodata.DimensionalizeValue(type, data.Fz.imag()), table.w, table.p,
-                         (data.idx == probe_data.back().idx) ? "" : ",");
-            // clang-format on
-          }
-          else
-          {
-            // clang-format off
-            output.print("{}",
-                         (data.idx == probe_data.back().idx) ? "" : ",");
-            // clang-format on
-          }
-        }
-      }
-      else
-      {
-        for (const auto &data : probe_data)
-        {
-          // clang-format off
-          output.print("{:+{}.{}e},{:+{}.{}e}",
-                       iodata.DimensionalizeValue(type, data.Fx.real()), table.w, table.p,
-                       iodata.DimensionalizeValue(type, data.Fy.real()), table.w, table.p);
-          // clang-format on
-          if (dim == 3)
-          {
-            // clang-format off
-            output.print(",{:+{}.{}e}{}",
-                         iodata.DimensionalizeValue(type, data.Fz.real()), table.w, table.p,
-                         (data.idx == probe_data.back().idx) ? "" : ",");
-            // clang-format on
-          }
-          else
-          {
-            // clang-format off
-            output.print("{}",
-                         (data.idx == probe_data.back().idx) ? "" : ",");
-            // clang-format on
-          }
-        }
-      }
-      output.print("\n");
-    }
-  }
-#endif
-}
-
-void BaseSolver::PostprocessFields(const PostOperator &postop, int step, double time,
-                                   const ErrorIndicator *indicator) const
-{
-  // Save the computed fields in parallel in format for viewing with ParaView.
-  BlockTimer bt(Timer::IO);
-  if (post_dir.length() == 0)
-  {
-    Mpi::Warning(postop.GetComm(),
-                 "No file specified under [\"Problem\"][\"Output\"]!\nSkipping saving of "
-                 "fields to disk!\n");
-    return;
-  }
-  postop.WriteFields(step, time, indicator);
-  Mpi::Barrier(postop.GetComm());
-}
-
-void BaseSolver::PostprocessErrorIndicator(const PostOperator &postop,
-                                           const ErrorIndicator &indicator) const
-{
-  // Write the indicator statistics.
-  if (post_dir.length() == 0)
-  {
-    return;
-  }
-  MPI_Comm comm = postop.GetComm();
-  std::array<double, 4> data = {indicator.Norml2(comm), indicator.Min(comm),
-                                indicator.Max(comm), indicator.Mean(comm)};
-  if (root)
-  {
-    std::string path = post_dir + "error-indicators.csv";
-    auto output = OutputFile(path, false);
-    // clang-format off
-    output.print("{:>{}s},{:>{}s},{:>{}s},{:>{}s}\n",
-                 "Norm", table.w,
-                 "Minimum", table.w,
-                 "Maximum", table.w,
-                 "Mean", table.w);
-    output.print("{:+{}.{}e},{:+{}.{}e},{:+{}.{}e},{:+{}.{}e}\n",
-                 data[0], table.w, table.p,
-                 data[1], table.w, table.p,
-                 data[2], table.w, table.p,
-                 data[3], table.w, table.p);
-    // clang-format on
+    nlohmann::json meta = LoadMetadata(post_dir);
+    meta["Excitations"] = excitation_helper;
+    WriteMetadata(post_dir, meta);
   }
 }
 

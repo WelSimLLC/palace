@@ -27,11 +27,14 @@ protected:
   int n;
 
 public:
-  ErrorIndicator(Vector &&local) : local(std::move(local)), n(1) {}
-  ErrorIndicator() : n(0) {}
+  ErrorIndicator(Vector &&local) : local(std::move(local)), n(1)
+  {
+    this->local.UseDevice(true);
+  }
+  ErrorIndicator() : n(0) { local.UseDevice(true); }
 
   // Add an indicator to the running total.
-  void AddIndicator(const ErrorIndicator &indicator);
+  void AddIndicator(const Vector &indicator);
 
   // Return the local error indicator.
   const auto &Local() const { return local; }
@@ -56,11 +59,19 @@ public:
   }
 
   // Return the mean local error indicator.
-  auto Mean(MPI_Comm comm) const
+  auto Mean(MPI_Comm comm) const { return linalg::Mean(comm, local); }
+
+  struct SummaryStatistics
   {
-    auto sum = local.Sum();
-    Mpi::GlobalSum(1, &sum, comm);
-    return sum / linalg::GlobalSize(comm, local);
+    double norm;
+    double min;
+    double max;
+    double mean;
+  };
+
+  SummaryStatistics GetSummaryStatistics(MPI_Comm comm) const
+  {
+    return {Norml2(comm), Min(comm), Max(comm), Mean(comm)};
   }
 };
 
