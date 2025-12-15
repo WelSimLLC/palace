@@ -3,6 +3,7 @@
 
 #include "solver.hpp"
 
+#include "linalg/mumps.hpp"
 #include "linalg/rap.hpp"
 
 namespace palace
@@ -54,8 +55,9 @@ void MfemWrapperSolver<ComplexOperator>::SetOperator(const ComplexOperator &op)
   {
     if (complex_matrix)
     {
-      // A = [Ar, -Ai]
-      //     [Ai,  Ar]
+      // A = [Ar, Ai]
+      //     [Ai, -Ar]
+      // We solve A [xr; -xi] = [br; bi]
       mfem::Array2D<const mfem::HypreParMatrix *> blocks(2, 2);
       mfem::Array2D<double> block_coeffs(2, 2);
       blocks(0, 0) = hAr;
@@ -63,9 +65,9 @@ void MfemWrapperSolver<ComplexOperator>::SetOperator(const ComplexOperator &op)
       blocks(1, 0) = hAi;
       blocks(1, 1) = hAr;
       block_coeffs(0, 0) = 1.0;
-      block_coeffs(0, 1) = -1.0;
+      block_coeffs(0, 1) = 1.0;
       block_coeffs(1, 0) = 1.0;
-      block_coeffs(1, 1) = 1.0;
+      block_coeffs(1, 1) = -1.0;
       A.reset(mfem::HypreParMatrixFromBlocks(blocks, &block_coeffs));
     }
     else
@@ -83,13 +85,7 @@ void MfemWrapperSolver<ComplexOperator>::SetOperator(const ComplexOperator &op)
     }
     if (drop_small_entries)
     {
-      const auto nnz_before = A->NNZ();
-      A->DropSmallEntries(std::pow(std::numeric_limits<double>::epsilon(), 2));
-      const auto nnz_after = A->NNZ();
-      Mpi::Print(
-          " Dropping {} small entries in complex sparse matrix out of {} ({:.1f}%)\n",
-          (nnz_before - nnz_after), nnz_before,
-          (double)(nnz_before - nnz_after) / nnz_before * 100.0);
+      DropSmallEntries();
     }
     pc->SetOperator(*A);
     if (!save_assembled)
@@ -102,12 +98,7 @@ void MfemWrapperSolver<ComplexOperator>::SetOperator(const ComplexOperator &op)
     if (drop_small_entries)
     {
       A = std::make_unique<mfem::HypreParMatrix>(*hAr);
-      const auto nnz_before = A->NNZ();
-      A->DropSmallEntries(std::pow(std::numeric_limits<double>::epsilon(), 2));
-      const auto nnz_after = A->NNZ();
-      Mpi::Print(" Dropping {} small entries in real sparse matrix out of {} ({:.1f}%)\n",
-                 (nnz_before - nnz_after), nnz_before,
-                 (double)(nnz_before - nnz_after) / nnz_before * 100.0);
+      DropSmallEntries();
       pc->SetOperator(*A);
     }
     else
@@ -124,13 +115,7 @@ void MfemWrapperSolver<ComplexOperator>::SetOperator(const ComplexOperator &op)
     if (drop_small_entries)
     {
       A = std::make_unique<mfem::HypreParMatrix>(*hAi);
-      const auto nnz_before = A->NNZ();
-      A->DropSmallEntries(std::pow(std::numeric_limits<double>::epsilon(), 2));
-      const auto nnz_after = A->NNZ();
-      Mpi::Print(
-          " Dropping {} small entries in imaginary sparse matrix out of {} ({:.1f}%)\n",
-          (nnz_before - nnz_after), nnz_before,
-          (double)(nnz_before - nnz_after) / nnz_before * 100.0);
+      DropSmallEntries();
       pc->SetOperator(*A);
     }
     else
@@ -184,9 +169,41 @@ void MfemWrapperSolver<ComplexOperator>::Mult(const ComplexVector &x,
     Y.ReadWrite();
     yr.MakeRef(Y, 0, Ny);
     yi.MakeRef(Y, Ny, Ny);
+    // [yr; yi] is the complex conjugate of the solution
+    yi *= -1.0;
     y.Real() = yr;
     y.Imag() = yi;
   }
+}
+
+template <typename OperType>
+void MfemWrapperSolver<OperType>::DropSmallEntries()
+{
+  const auto nnz_before = A->NNZ();
+  A->DropSmallEntries(std::pow(std::numeric_limits<double>::epsilon(), 2));
+  const auto nnz_after = A->NNZ();
+#if defined(MFEM_USE_MUMPS)
+  if (auto *mumps = dynamic_cast<MumpsSolver *>(pc.get()))
+  {
+    if (reorder_reuse && (num_dropped_entries != 0) &&
+        (num_dropped_entries != (nnz_before - nnz_after)))
+    {
+      // MUMPS errors out if there are any changes to the symmetry pattern after the first
+      // factorization so we don't reuse the reordering if the number of dropped entries has
+      // changed.
+      mumps->SetReorderReuse(false);
+    }
+    else if (reorder_reuse && (num_dropped_entries == (nnz_before - nnz_after)))
+    {
+      // Reuse the column ordering if the number of dropped entries has not changed.
+      mumps->SetReorderReuse(true);
+    }
+  }
+#endif
+  num_dropped_entries = nnz_before - nnz_after;
+  Mpi::Print(" Dropping {} small entries in sparse matrix out of {} ({:.1f}%)\n",
+             num_dropped_entries, nnz_before,
+             (double)(num_dropped_entries) / nnz_before * 100.0);
 }
 
 }  // namespace palace

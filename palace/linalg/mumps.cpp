@@ -44,8 +44,13 @@ MumpsSolver::MumpsSolver(MPI_Comm comm, mfem::MUMPSSolver::MatType sym,
   SetReorderingReuse(reorder_reuse);  // If true repeated calls use same sparsity pattern
   if (blr_tol > 0.0)
   {
-    //SetBLRTol(blr_tol);
+    SetBLRTol(blr_tol);
   }
+}
+
+void MumpsSolver::SetReorderReuse(bool reorder_reuse)
+{
+  SetReorderingReuse(reorder_reuse);  // If true repeated calls use same sparsity pattern
 }
 
 }  // namespace palace
