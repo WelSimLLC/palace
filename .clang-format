@@ -49,6 +49,10 @@ PackConstructorInitializers: BinPack
 QualifierAlignment: Left
 ShortNamespaceLines: 0
 SpacesBeforeTrailingComments: 2
-StatementMacros: ['PalacePragmaOmp']
+StatementMacros: ['PalacePragmaOmp',
+                  'PalacePragmaDiagnosticPush',
+                  'PalacePragmaDiagnosticPop',
+                  'PalacePragmaDiagnosticDisableDeprecated',
+                  'PalacePragmaDiagnosticDisableUnused']
 TypenameMacros: ['CEED_QFUNCTION']
 UseTab: Never

@@ -1,10 +1,11 @@
 build*/
 examples/**/postpro*/
 examples/**/log*/
-spack/local/packages/palace/__pycache__/
+spack_repo/local/packages/palace/__pycache__/
 test/examples/ref/**/*.json
 .*.swp
 *.sif
 .DS_Store
 .gitlab-ci-local
 Manifest.toml
+.vscode/
