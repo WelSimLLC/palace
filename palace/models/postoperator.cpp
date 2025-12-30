@@ -140,6 +140,293 @@ PostOperator<solver_t>::PostOperator(const IoData &iodata, fem_op_t<solver_t> &f
   post_op_csv.InitializeCSVDataCollection(*this);
 }
 
+template <ProblemType solver_t>
+template <ProblemType U>
+auto PostOperator<solver_t>::InitializeParaviewDataCollection(int ex_idx)
+    -> std::enable_if_t<U == ProblemType::DRIVEN, void>
+{
+  fs::path sub_folder_name = "";
+  auto nr_excitations = fem_op->GetPortExcitations().Size();
+  if ((nr_excitations > 1) && (ex_idx > 0))
+  {
+    int spacing = 1 + int(std::log10(nr_excitations));
+    sub_folder_name = fmt::format(FMT_STRING("excitation_{:0>{}}"), ex_idx, spacing);
+  }
+  InitializeParaviewDataCollection(sub_folder_name);
+}
+
+bool createDirectory(const std::string &path)
+{
+  try
+  {
+    // Create directory (including parent directories if needed)
+    // Use fs::create_directory for single-level, or fs::create_directories for nested
+    if (fs::create_directories(path))
+    {
+      // std::cout << "Directory created: " << path << std::endl;
+      // return true;
+    }
+    // else
+    //{
+    //   std::cout << "Directory already exists: " << path << std::endl;
+    //   return true;
+    // }
+  }
+  catch (const fs::filesystem_error &e)
+  {
+    std::cerr << "Error creating directory: " << e.what() << std::endl;
+    return false;
+  }
+
+  return true;
+}
+
+template <ProblemType solver_t>
+void PostOperator<solver_t>::SetupFieldCoefficients()
+{
+  // We currently don't use the dependent grid functions apart from saving fields, so only
+  // initialize if needed.
+  if (!ShouldWriteFields())
+  {
+    return;
+  }
+
+  // Set-up grid-functions for the paraview output / measurement.
+  if constexpr (HasVGridFunction<solver_t>())
+  {
+    V_s = std::make_unique<BdrFieldCoefficient>(V->Real());
+  }
+
+  if constexpr (HasAGridFunction<solver_t>())
+  {
+    A_s = std::make_unique<BdrFieldVectorCoefficient>(A->Real());
+  }
+
+  if constexpr (HasEGridFunction<solver_t>())
+  {
+    // If E is dimensionalized when the coefficients are evaluated, the scaling only needs
+    // to account for the remaining ε_0 = D / E. This assumes ProjectCoefficient(),
+    // ProjectBdrCoefficient(), or paraview->Save() for U_e, Q_sr, and Q_si are always
+    // called after the E GridFunction has been dimensionalized. To output nondimensional
+    // coefficients, omit the scaling argument and make sure E is nondimensional when the
+    // coefficients are evaluated.
+    const double scaling = units.Dimensionalize<Units::ValueType::FIELD_D>(1.0) /
+                           units.Dimensionalize<Units::ValueType::FIELD_E>(1.0);
+
+    // Electric Energy Density.
+    // U_e = 1/2 Dᴴ E = 1/2 ε_0 Eᴴ E.
+    U_e = std::make_unique<EnergyDensityCoefficient<EnergyDensityType::ELECTRIC>>(
+        *E, fem_op->GetMaterialOp(), scaling);
+
+    // Electric Boundary Field & Surface Charge.
+    E_sr = std::make_unique<BdrFieldVectorCoefficient>(E->Real());
+    // Q_s = D ⋅ n = ε_0 E ⋅ n.
+    Q_sr = std::make_unique<BdrSurfaceFluxCoefficient<SurfaceFlux::ELECTRIC>>(
+        &E->Real(), nullptr, fem_op->GetMaterialOp(), true, mfem::Vector(), scaling);
+
+    if constexpr (HasComplexGridFunction<solver_t>())
+    {
+      E_si = std::make_unique<BdrFieldVectorCoefficient>(E->Imag());
+      Q_si = std::make_unique<BdrSurfaceFluxCoefficient<SurfaceFlux::ELECTRIC>>(
+          &E->Imag(), nullptr, fem_op->GetMaterialOp(), true, mfem::Vector(), scaling);
+    }
+  }
+
+  if constexpr (HasBGridFunction<solver_t>())
+  {
+    // If B is dimensionalized when the coefficients are evaluated, the scaling only needs
+    // to account for the remaining μ⁻¹ = H / B. This assumes ProjectCoefficient(),
+    // ProjectBdrCoefficient(), or paraview->Save() for U_m, J_sr, and J_si are always
+    // called after the B GridFunction has been dimensionalized. To output nondimensional
+    // coefficients, omit the scaling argument and make sure B is nondimensional when the
+    // coefficients are evaluated.
+    const double scaling = units.Dimensionalize<Units::ValueType::FIELD_H>(1.0) /
+                           units.Dimensionalize<Units::ValueType::FIELD_B>(1.0);
+
+    // Magnetic Energy Density.
+    // U_m = 1/2 Hᴴ B = 1/2 μ⁻¹ Bᴴ B.
+    U_m = std::make_unique<EnergyDensityCoefficient<EnergyDensityType::MAGNETIC>>(
+        *B, fem_op->GetMaterialOp(), scaling);
+
+    // Magnetic Boundary Field & Surface Current.
+    B_sr = std::make_unique<BdrFieldVectorCoefficient>(B->Real());
+    // J_s = n x H = n x μ⁻¹ B.
+    J_sr = std::make_unique<BdrSurfaceCurrentVectorCoefficient>(
+        B->Real(), fem_op->GetMaterialOp(), scaling);
+
+    if constexpr (HasComplexGridFunction<solver_t>())
+    {
+      B_si = std::make_unique<BdrFieldVectorCoefficient>(B->Imag());
+      J_si = std::make_unique<BdrSurfaceCurrentVectorCoefficient>(
+          B->Imag(), fem_op->GetMaterialOp(), scaling);
+    }
+  }
+
+  if constexpr (HasEGridFunction<solver_t>() && HasBGridFunction<solver_t>())
+  {
+    // Poynting Vector.
+    // S = Re{E x H⋆} = Re{E x μ⁻¹B⋆}.
+    // E and B will be dimensionalized when the coefficient is evaluated, so the scaling
+    // only needs to account for the remaining μ⁻¹ = H / B. As mentioned above,
+    // ProjectCoefficient(*S.get()) or paraview->Save() should always be called after
+    // E and B have been dimensionalized.
+    const double scaling = units.Dimensionalize<Units::ValueType::FIELD_H>(1.0) /
+                           units.Dimensionalize<Units::ValueType::FIELD_B>(1.0);
+    S = std::make_unique<PoyntingVectorCoefficient>(*E, *B, fem_op->GetMaterialOp(),
+                                                    scaling);
+  }
+}
+
+template <ProblemType solver_t>
+void PostOperator<solver_t>::InitializeParaviewDataCollection(
+    const fs::path &sub_folder_name)
+{
+  if (!ShouldWriteParaviewFields())
+  {
+    return;
+  }
+  fs::path paraview_dir_v = post_dir / "paraview" / OutputFolderName(solver_t);
+  fs::path paraview_dir_b =
+      post_dir / "paraview" / fmt::format("{}_boundary", OutputFolderName(solver_t));
+  if (!sub_folder_name.empty())
+  {
+    paraview_dir_v /= sub_folder_name;
+    paraview_dir_b /= sub_folder_name;
+  }
+  // Set up postprocessing for output to disk.
+  paraview = {paraview_dir_v.string(), &fem_op->GetNDSpace().GetParMesh()};
+  paraview_bdr = {paraview_dir_b.string(), &fem_op->GetNDSpace().GetParMesh()};
+  bool bOk1 = createDirectory(paraview_dir_v.string());
+  bool bOk2 = createDirectory(paraview_dir_b.string());
+  if (!bOk1 || !bOk2) { assert(0); return; }
+  
+  
+  
+  const mfem::VTKFormat format = mfem::VTKFormat::BINARY32;
+#if defined(MFEM_USE_ZLIB)
+  const int compress = -1;  // Default compression level
+#else
+  const int compress = 0;
+#endif
+  const bool use_ho = true;
+  const int refine_ho = HasEGridFunction<solver_t>()
+                            ? E->ParFESpace()->GetMaxElementOrder()
+                            : B->ParFESpace()->GetMaxElementOrder();
+
+  // Output mesh coordinate units same as input.
+  paraview->SetCycle(-1);
+  paraview->SetDataFormat(format);
+  paraview->SetCompressionLevel(compress);
+  paraview->SetHighOrderOutput(use_ho);
+  paraview->SetLevelsOfDetail(refine_ho);
+
+  paraview_bdr->SetBoundaryOutput(true);
+  paraview_bdr->SetCycle(-1);
+  paraview_bdr->SetDataFormat(format);
+  paraview_bdr->SetCompressionLevel(compress);
+  paraview_bdr->SetHighOrderOutput(use_ho);
+  paraview_bdr->SetLevelsOfDetail(refine_ho);
+
+  // Output fields @ phase = 0 and π/2 for frequency domain (rather than, for example,
+  // peak phasors or magnitude = sqrt(2) * RMS). Also output fields evaluated on mesh
+  // boundaries. For internal boundary surfaces, this takes the field evaluated in the
+  // neighboring element with the larger dielectric permittivity or magnetic
+  // permeability.
+  if (E)
+  {
+    if (HasComplexGridFunction<solver_t>())
+    {
+      paraview->RegisterField("E_real", &E->Real());
+      paraview->RegisterField("E_imag", &E->Imag());
+      paraview_bdr->RegisterVCoeffField("E_real", E_sr.get());
+      paraview_bdr->RegisterVCoeffField("E_imag", E_si.get());
+    }
+    else
+    {
+      paraview->RegisterField("E", &E->Real());
+      paraview_bdr->RegisterVCoeffField("E", E_sr.get());
+    }
+  }
+  if (B)
+  {
+    if (HasComplexGridFunction<solver_t>())
+    {
+      paraview->RegisterField("B_real", &B->Real());
+      paraview->RegisterField("B_imag", &B->Imag());
+      paraview_bdr->RegisterVCoeffField("B_real", B_sr.get());
+      paraview_bdr->RegisterVCoeffField("B_imag", B_si.get());
+    }
+    else
+    {
+      paraview->RegisterField("B", &B->Real());
+      paraview_bdr->RegisterVCoeffField("B", B_sr.get());
+    }
+  }
+  if (V)
+  {
+    paraview->RegisterField("V", &V->Real());
+    paraview_bdr->RegisterCoeffField("V", V_s.get());
+  }
+  if (A)
+  {
+    paraview->RegisterField("A", &A->Real());
+    paraview_bdr->RegisterVCoeffField("A", A_s.get());
+  }
+
+  // Extract energy density field for electric field energy 1/2 Dᴴ E or magnetic field
+  // energy 1/2 Hᴴ B. Also Poynting vector S = E x H⋆.
+  if (U_e)
+  {
+    paraview->RegisterCoeffField("U_e", U_e.get());
+    paraview_bdr->RegisterCoeffField("U_e", U_e.get());
+  }
+  if (U_m)
+  {
+    paraview->RegisterCoeffField("U_m", U_m.get());
+    paraview_bdr->RegisterCoeffField("U_m", U_m.get());
+  }
+  if (S)
+  {
+    paraview->RegisterVCoeffField("S", S.get());
+    paraview_bdr->RegisterVCoeffField("S", S.get());
+  }
+
+  // Extract surface charge from normally discontinuous ND E-field. Also extract surface
+  // currents from tangentially discontinuous RT B-field The surface charge and surface
+  // currents are single-valued at internal boundaries.
+  if (Q_sr)
+  {
+    if (HasComplexGridFunction<solver_t>())
+    {
+      paraview_bdr->RegisterCoeffField("Q_s_real", Q_sr.get());
+      paraview_bdr->RegisterCoeffField("Q_s_imag", Q_si.get());
+    }
+    else
+    {
+      paraview_bdr->RegisterCoeffField("Q_s", Q_sr.get());
+    }
+  }
+  if (J_sr)
+  {
+    if (HasComplexGridFunction<solver_t>())
+    {
+      paraview_bdr->RegisterVCoeffField("J_s_real", J_sr.get());
+      paraview_bdr->RegisterVCoeffField("J_s_imag", J_si.get());
+    }
+    else
+    {
+      paraview_bdr->RegisterVCoeffField("J_s", J_sr.get());
+    }
+  }
+
+  // Add wave port boundary mode postprocessing when available.
+  for (const auto &[idx, data] : port_E0)
+  {
+    paraview_bdr->RegisterVCoeffField(fmt::format("E0_{}_real", idx), data.E0r.get());
+    paraview_bdr->RegisterVCoeffField(fmt::format("E0_{}_imag", idx), data.E0i.get());
+  }
+}
+
 void ScaleGridFunctions(double L, int dim, std::unique_ptr<GridFunction> &E,
                         std::unique_ptr<GridFunction> &B, std::unique_ptr<GridFunction> &V,
                         std::unique_ptr<GridFunction> &A)
@@ -1125,296 +1412,6 @@ auto PostOperator<solver_t>::MeasureDomainFieldEnergyOnly(const ComplexVector &e
          measurement_cache.domain_H_field_energy_all;
 }
 
-template <ProblemType solver_t>
-template <ProblemType U>
-auto PostOperator<solver_t>::InitializeParaviewDataCollection(int ex_idx)
-    -> std::enable_if_t<U == ProblemType::DRIVEN, void>
-{
-  fs::path sub_folder_name = "";
-  auto nr_excitations = fem_op->GetPortExcitations().Size();
-  if ((nr_excitations > 1) && (ex_idx > 0))
-  {
-    int spacing = 1 + int(std::log10(nr_excitations));
-    sub_folder_name = fmt::format(FMT_STRING("excitation_{:0>{}}"), ex_idx, spacing);
-  }
-  InitializeParaviewDataCollection(sub_folder_name);
-}
-
-template <ProblemType solver_t>
-void PostOperator<solver_t>::SetupFieldCoefficients()
-{
-  // We currently don't use the dependent grid functions apart from saving fields, so only
-  // initialize if needed.
-  if (!ShouldWriteFields())
-  {
-    return;
-  }
-
-  // Set-up grid-functions for the paraview output / measurement.
-  if constexpr (HasVGridFunction<solver_t>())
-  {
-    V_s = std::make_unique<BdrFieldCoefficient>(V->Real());
-  }
-
-  if constexpr (HasAGridFunction<solver_t>())
-  {
-    A_s = std::make_unique<BdrFieldVectorCoefficient>(A->Real());
-  }
-
-  if constexpr (HasEGridFunction<solver_t>())
-  {
-    // If E is dimensionalized when the coefficients are evaluated, the scaling only needs
-    // to account for the remaining ε_0 = D / E. This assumes ProjectCoefficient(),
-    // ProjectBdrCoefficient(), or paraview->Save() for U_e, Q_sr, and Q_si are always
-    // called after the E GridFunction has been dimensionalized. To output nondimensional
-    // coefficients, omit the scaling argument and make sure E is nondimensional when the
-    // coefficients are evaluated.
-    const double scaling = units.Dimensionalize<Units::ValueType::FIELD_D>(1.0) /
-                           units.Dimensionalize<Units::ValueType::FIELD_E>(1.0);
-
-    // Electric Energy Density.
-    // U_e = 1/2 Dᴴ E = 1/2 ε_0 Eᴴ E.
-    U_e = std::make_unique<EnergyDensityCoefficient<EnergyDensityType::ELECTRIC>>(
-        *E, fem_op->GetMaterialOp(), scaling);
-
-    // Electric Boundary Field & Surface Charge.
-    E_sr = std::make_unique<BdrFieldVectorCoefficient>(E->Real());
-    // Q_s = D ⋅ n = ε_0 E ⋅ n.
-    Q_sr = std::make_unique<BdrSurfaceFluxCoefficient<SurfaceFlux::ELECTRIC>>(
-        &E->Real(), nullptr, fem_op->GetMaterialOp(), true, mfem::Vector(), scaling);
-
-    if constexpr (HasComplexGridFunction<solver_t>())
-    {
-      E_si = std::make_unique<BdrFieldVectorCoefficient>(E->Imag());
-      Q_si = std::make_unique<BdrSurfaceFluxCoefficient<SurfaceFlux::ELECTRIC>>(
-          &E->Imag(), nullptr, fem_op->GetMaterialOp(), true, mfem::Vector(), scaling);
-    }
-  }
-
-  if constexpr (HasBGridFunction<solver_t>())
-  {
-    // If B is dimensionalized when the coefficients are evaluated, the scaling only needs
-    // to account for the remaining μ⁻¹ = H / B. This assumes ProjectCoefficient(),
-    // ProjectBdrCoefficient(), or paraview->Save() for U_m, J_sr, and J_si are always
-    // called after the B GridFunction has been dimensionalized. To output nondimensional
-    // coefficients, omit the scaling argument and make sure B is nondimensional when the
-    // coefficients are evaluated.
-    const double scaling = units.Dimensionalize<Units::ValueType::FIELD_H>(1.0) /
-                           units.Dimensionalize<Units::ValueType::FIELD_B>(1.0);
-
-    // Magnetic Energy Density.
-    // U_m = 1/2 Hᴴ B = 1/2 μ⁻¹ Bᴴ B.
-    U_m = std::make_unique<EnergyDensityCoefficient<EnergyDensityType::MAGNETIC>>(
-        *B, fem_op->GetMaterialOp(), scaling);
-
-    // Magnetic Boundary Field & Surface Current.
-    B_sr = std::make_unique<BdrFieldVectorCoefficient>(B->Real());
-    // J_s = n x H = n x μ⁻¹ B.
-    J_sr = std::make_unique<BdrSurfaceCurrentVectorCoefficient>(
-        B->Real(), fem_op->GetMaterialOp(), scaling);
-
-    if constexpr (HasComplexGridFunction<solver_t>())
-    {
-      B_si = std::make_unique<BdrFieldVectorCoefficient>(B->Imag());
-      J_si = std::make_unique<BdrSurfaceCurrentVectorCoefficient>(
-          B->Imag(), fem_op->GetMaterialOp(), scaling);
-    }
-  }
-
-  if constexpr (HasEGridFunction<solver_t>() && HasBGridFunction<solver_t>())
-  {
-    // Poynting Vector.
-    // S = Re{E x H⋆} = Re{E x μ⁻¹B⋆}.
-    // E and B will be dimensionalized when the coefficient is evaluated, so the scaling
-    // only needs to account for the remaining μ⁻¹ = H / B. As mentioned above,
-    // ProjectCoefficient(*S.get()) or paraview->Save() should always be called after
-    // E and B have been dimensionalized.
-    const double scaling = units.Dimensionalize<Units::ValueType::FIELD_H>(1.0) /
-                           units.Dimensionalize<Units::ValueType::FIELD_B>(1.0);
-    S = std::make_unique<PoyntingVectorCoefficient>(*E, *B, fem_op->GetMaterialOp(),
-                                                    scaling);
-  }
-}
-
-template <ProblemType solver_t>
-void PostOperator<solver_t>::InitializeParaviewDataCollection(
-    const fs::path &sub_folder_name)
-{
-  if (!ShouldWriteParaviewFields())
-  {
-    return;
-  }
-  fs::path paraview_dir_v = post_dir / "paraview" / OutputFolderName(solver_t);
-  fs::path paraview_dir_b =
-      post_dir / "paraview" / fmt::format("{}_boundary", OutputFolderName(solver_t));
-  if (!sub_folder_name.empty())
-  {
-    paraview_dir_v /= sub_folder_name;
-    paraview_dir_b /= sub_folder_name;
-  }
-  // Set up postprocessing for output to disk.
-  paraview = {paraview_dir_v.string(), &fem_op->GetNDSpace().GetParMesh()};
-  paraview_bdr = {paraview_dir_b.string(), &fem_op->GetNDSpace().GetParMesh()};
-  // make sure the folder can be created
-  //bool bOk1 = fs::create_directories(paraview_dir_v.string());
-  //bool bOk2 = fs::create_directories(paraview_dir_b.string());
-  bool bOk1 = createDirectory(paraview_dir_v.string());
-  bool bOk2 = createDirectory(paraview_dir_b.string());
-  if (!bOk1 || !bOk2) { assert(0); return; }
-
-
-  const mfem::VTKFormat format = mfem::VTKFormat::BINARY32;
-#if defined(MFEM_USE_ZLIB)
-  const int compress = -1;  // Default compression level
-#else
-  const int compress = 0;
-#endif
-  const bool use_ho = true;
-  const int refine_ho = HasEGridFunction<solver_t>()
-                            ? E->ParFESpace()->GetMaxElementOrder()
-                            : B->ParFESpace()->GetMaxElementOrder();
-
-  // Output mesh coordinate units same as input.
-  paraview->SetCycle(-1);
-  paraview->SetDataFormat(format);
-  paraview->SetCompressionLevel(compress);
-  paraview->SetHighOrderOutput(use_ho);
-  paraview->SetLevelsOfDetail(refine_ho);
-
-  paraview_bdr->SetBoundaryOutput(true);
-  paraview_bdr->SetCycle(-1);
-  paraview_bdr->SetDataFormat(format);
-  paraview_bdr->SetCompressionLevel(compress);
-  paraview_bdr->SetHighOrderOutput(use_ho);
-  paraview_bdr->SetLevelsOfDetail(refine_ho);
-
-  // Output fields @ phase = 0 and π/2 for frequency domain (rather than, for example,
-  // peak phasors or magnitude = sqrt(2) * RMS). Also output fields evaluated on mesh
-  // boundaries. For internal boundary surfaces, this takes the field evaluated in the
-  // neighboring element with the larger dielectric permittivity or magnetic
-  // permeability.
-  if (E)
-  {
-    if (HasComplexGridFunction<solver_t>())
-    {
-      paraview->RegisterField("E_real", &E->Real());
-      paraview->RegisterField("E_imag", &E->Imag());
-      paraview_bdr->RegisterVCoeffField("E_real", E_sr.get());
-      paraview_bdr->RegisterVCoeffField("E_imag", E_si.get());
-    }
-    else
-    {
-      paraview->RegisterField("E", &E->Real());
-      paraview_bdr->RegisterVCoeffField("E", E_sr.get());
-    }
-  }
-  if (B)
-  {
-    if (HasComplexGridFunction<solver_t>())
-    {
-      paraview->RegisterField("B_real", &B->Real());
-      paraview->RegisterField("B_imag", &B->Imag());
-      paraview_bdr->RegisterVCoeffField("B_real", B_sr.get());
-      paraview_bdr->RegisterVCoeffField("B_imag", B_si.get());
-    }
-    else
-    {
-      paraview->RegisterField("B", &B->Real());
-      paraview_bdr->RegisterVCoeffField("B", B_sr.get());
-    }
-  }
-  if (V)
-  {
-    paraview->RegisterField("V", &V->Real());
-    paraview_bdr->RegisterCoeffField("V", V_s.get());
-  }
-  if (A)
-  {
-    paraview->RegisterField("A", &A->Real());
-    paraview_bdr->RegisterVCoeffField("A", A_s.get());
-  }
-
-  // Extract energy density field for electric field energy 1/2 Dᴴ E or magnetic field
-  // energy 1/2 Hᴴ B. Also Poynting vector S = E x H⋆.
-  if (U_e)
-  {
-    paraview->RegisterCoeffField("U_e", U_e.get());
-    paraview_bdr->RegisterCoeffField("U_e", U_e.get());
-  }
-  if (U_m)
-  {
-    paraview->RegisterCoeffField("U_m", U_m.get());
-    paraview_bdr->RegisterCoeffField("U_m", U_m.get());
-  }
-  if (S)
-  {
-    paraview->RegisterVCoeffField("S", S.get());
-    paraview_bdr->RegisterVCoeffField("S", S.get());
-  }
-
-  // Extract surface charge from normally discontinuous ND E-field. Also extract surface
-  // currents from tangentially discontinuous RT B-field The surface charge and surface
-  // currents are single-valued at internal boundaries.
-  if (Q_sr)
-  {
-    if (HasComplexGridFunction<solver_t>())
-    {
-      paraview_bdr->RegisterCoeffField("Q_s_real", Q_sr.get());
-      paraview_bdr->RegisterCoeffField("Q_s_imag", Q_si.get());
-    }
-    else
-    {
-      paraview_bdr->RegisterCoeffField("Q_s", Q_sr.get());
-    }
-  }
-  if (J_sr)
-  {
-    if (HasComplexGridFunction<solver_t>())
-    {
-      paraview_bdr->RegisterVCoeffField("J_s_real", J_sr.get());
-      paraview_bdr->RegisterVCoeffField("J_s_imag", J_si.get());
-    }
-    else
-    {
-      paraview_bdr->RegisterVCoeffField("J_s", J_sr.get());
-    }
-  }
-
-  // Add wave port boundary mode postprocessing when available.
-  for (const auto &[idx, data] : port_E0)
-  {
-    paraview_bdr->RegisterVCoeffField(fmt::format("E0_{}_real", idx), data.E0r.get());
-    paraview_bdr->RegisterVCoeffField(fmt::format("E0_{}_imag", idx), data.E0i.get());
-  }
-}
-
-bool createDirectory(const std::string &path)
-{
-  try
-  {
-    // Create directory (including parent directories if needed)
-    // Use fs::create_directory for single-level, or fs::create_directories for nested
-    if (fs::create_directories(path))
-    {
-      //std::cout << "Directory created: " << path << std::endl;
-      //return true;
-    }
-    //else
-    //{
-    //  std::cout << "Directory already exists: " << path << std::endl;
-    //  return true;
-    //}
-  }
-  catch (const fs::filesystem_error &e)
-  {
-    std::cerr << "Error creating directory: " << e.what() << std::endl;
-    return false;
-  }
-
-  return true;
-}
-
-
 // Explicit template instantiation.
 
 template class PostOperator<ProblemType::DRIVEN>;
@@ -1452,6 +1449,7 @@ PostOperator<ProblemType::DRIVEN>::MeasureDomainFieldEnergyOnly<ProblemType::DRI
     const ComplexVector &e, const ComplexVector &b) -> double;
 
 template auto
-PostOperator<ProblemType::DRIVEN>::InitializeParaviewDataCollection<ProblemType::DRIVEN>(int ex_idx) -> void;
+PostOperator<ProblemType::DRIVEN>::InitializeParaviewDataCollection<ProblemType::DRIVEN>(
+    int ex_idx) -> void;
 
 }  // namespace palace

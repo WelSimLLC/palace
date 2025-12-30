@@ -133,7 +133,7 @@ protected:
   bool ShouldWriteFields() const { return AnyOutputFormats() && AnythingToSave(); }
 
   // Whether any fields should be written for this step.
-  bool ShouldWriteFields(int step) const
+  bool ShouldWriteFields(std::size_t step) const
   {
     return AnyOutputFormats() &&
            ((output_delta_post > 0 && step % output_delta_post == 0) ||
@@ -147,7 +147,7 @@ protected:
   {
     return enable_paraview_output && AnythingToSave();
   }
-  bool ShouldWriteParaviewFields(int step) const
+  bool ShouldWriteParaviewFields(std::size_t step) const
   {
     return enable_paraview_output && ShouldWriteFields(step);
   }
@@ -155,7 +155,7 @@ protected:
   {
     return enable_gridfunction_output && AnythingToSave();
   }
-  bool ShouldWriteGridFunctionFields(int step) const
+  bool ShouldWriteGridFunctionFields(std::size_t step) const
   {
     return enable_gridfunction_output && ShouldWriteFields(step);
   }
@@ -193,7 +193,11 @@ protected:
   void InitializeParaviewDataCollection(const fs::path &sub_folder_name = "");
 
 public:
-
+  // Public overload for the driven solver only, that takes in an excitation index and
+  // sets the correct sub_folder_name path for the primary function above.
+  template <ProblemType U = solver_t>
+  auto InitializeParaviewDataCollection(int ex_idx)
+      -> std::enable_if_t<U == ProblemType::DRIVEN, void>;
 
 protected:
   // Write to disk the E- and B-fields extracted from the solution vectors. Note that
@@ -397,12 +401,6 @@ public:
   template <ProblemType U = solver_t>
   auto MeasureDomainFieldEnergyOnly(const ComplexVector &e, const ComplexVector &b)
       -> std::enable_if_t<U == ProblemType::DRIVEN, double>;
-
-  // Public overload for the driven solver only, that takes in an excitation index and
-  // sets the correct sub_folder_name path for the primary function above.
-  template <ProblemType U = solver_t>
-  auto InitializeParaviewDataCollection(int ex_idx)
-      -> std::enable_if_t<U == ProblemType::DRIVEN, void>;
 
   // Access grid functions for field solutions. Note that these are NOT const functions. The
   // electrostatics / magnetostatics solver do measurements of the capacitance/ inductance
