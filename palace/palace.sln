@@ -17,8 +17,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gslib-palace", "..\..\gslib
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libCEED-palace", "..\..\libCEED-palace\msbuild\libCEED-palace.vcxproj", "{4DE98561-4F49-4D08-9E09-75DB3EBF36EE}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libCEED-cuda", "..\..\libCEED-palace\msbuild\libCEED-cuda.vcxproj", "{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -71,14 +69,6 @@ Global
 		{4DE98561-4F49-4D08-9E09-75DB3EBF36EE}.Release|x64.Build.0 = Release|x64
 		{4DE98561-4F49-4D08-9E09-75DB3EBF36EE}.Release|x86.ActiveCfg = Release|x64
 		{4DE98561-4F49-4D08-9E09-75DB3EBF36EE}.Release|x86.Build.0 = Release|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Debug|x64.ActiveCfg = Debug|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Debug|x64.Build.0 = Debug|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Debug|x86.ActiveCfg = Debug|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Debug|x86.Build.0 = Debug|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Release|x64.ActiveCfg = Release|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Release|x64.Build.0 = Release|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Release|x86.ActiveCfg = Release|x64
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820}.Release|x86.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -88,7 +78,6 @@ Global
 		{6D7405DA-71FB-4E1B-9F8B-CF7A1F364E3B} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
 		{327F82B8-6770-403C-B56E-6FCF881FD072} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
 		{4DE98561-4F49-4D08-9E09-75DB3EBF36EE} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
-		{8BB7031F-9FF8-E271-E774-4CE6E9DF9820} = {FF794BCA-0652-481F-B0D5-A7C9A04749CA}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {0FFA0840-D029-3752-A1CB-5699E0B6EA23}
