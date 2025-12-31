@@ -18,7 +18,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>palace\gslib-palace.lib;palace\mfem-palace.lib;palace\mfem-common-palace.lib;palace\libCEED-palace.lib;palace\arpack.lib;palace\parpack.lib;palace\libpalace.lib;msmpi.lib;msmpifec.lib;hypre\HYPRE.lib;fmt\selfBuild\fmt.lib;metis\metis.lib;PETSc\Release\libpetsc.lib;mkl_core_dll.lib;mkl_intel_lp64_dll.lib;mkl_sequential_dll.lib;mkl_scalapack_lp64_dll.lib;mkl_intel_thread_dll.lib;mkl_blacs_lp64_dll.lib;dmumps.lib;mumps_common.lib;pord.lib;libxsmm\xsmm.lib;zlib\zlib.lib;scn\scn.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>palace\gslib-palace.lib;palace\mfem-palace.lib;palace\mfem-common-palace.lib;palace\libCEED-palace.lib;palace\arpack.lib;palace\parpack.lib;palace\libpalace.lib;msmpi.lib;msmpifec.lib;hypre\HYPRE.lib;fmt\selfBuild\fmt.lib;metis\metis.lib;metis\GKlib.lib;PETSc\Release\libpetsc.lib;mkl_core_dll.lib;mkl_intel_lp64_dll.lib;mkl_sequential_dll.lib;mkl_scalapack_lp64_dll.lib;mkl_intel_thread_dll.lib;mkl_blacs_lp64_dll.lib;dmumps.lib;mumps_common.lib;pord.lib;libxsmm\xsmm.lib;zlib\zlib.lib;scn\scn.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup />
